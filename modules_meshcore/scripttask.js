@@ -297,8 +297,8 @@ function runPowerShell(sObj, jObj) {
         child.stderr.on('data', function (chunk) { errstr += chunk; });
         child.stdout.on('data', function (chunk) { });
 
-        child.stdout.on('finish', function() {
-            log('received stdout finish from pid ' + child.pid);
+        child.stdout.on('close', function() {
+            log('received stdout close from pid ' + child.pid);
         });
 
         runningJobPIDs[jObj.jobId] = child.pid;
