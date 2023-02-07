@@ -278,7 +278,7 @@ function runPowerShell(sObj, jObj) {
         }
 
         try {
-            log('removing script file ' + outputPath);
+            log('removing script file ' + scriptPath);
             fs.unlinkSync(scriptPath);
         } catch(e) {
             const message = e ? (e.message ? e.message : e.toString() ) : 'UNKNOWN';
@@ -366,6 +366,7 @@ function runPowerShell(sObj, jObj) {
             var buffer = new Buffer('.\\' + scriptPath + ' | Out-File ' + outputPath + ' -Encoding UTF8', 'utf16le');
             var invocation = 'powershell -NoLogo -ExecutionPolicy Bypass -EncodedCommand ' + buffer.toString('base64');
             log('oneliner: ' + invocation);
+            log('version: ' + process.version);
         } catch(e) {
             const message = e ? (e.message ? e.message : e.toString() ) : 'UNKNOWN';
             log('failed ' + message);
