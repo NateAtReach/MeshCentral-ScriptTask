@@ -41,7 +41,7 @@ var log = function(str) {
 
     var logStream = fs.createWriteStream(logFilePath, {'flags': 'a'});
     
-    logStream.end(new Date().toLocaleString()+': '+ str + '\n');
+    logStream.end(new Date().toLocaleString()+': '+ str.replace('\r', '[CR]').replace('\n', '[LF]') + '\n');
 }
 
 Array.prototype.remove = function(from, to) {
