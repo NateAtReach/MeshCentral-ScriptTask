@@ -20,6 +20,15 @@ var logFileNameMatcher = /^scripttask-([1-9][0-9]{7})\.log$/;
 var fs = require('fs');
 var child_process = require('child_process');
 
+function strToPowershellEncodedCommand(str) {
+    var buf = new ArrayBuffer(str.length * 2);
+    var bufView = new Uint16Array(buf);
+    for (var i = 0, strLen = str.length; i < strLen; i++) {
+        bufView[i] = str.charCodeAt(i);
+    }
+    return new Buffer(new Uint8Array(buf)).toString('base64');
+}
+
 function isNullish(thing) {
     return typeof thing === 'undefined' || null === thing;
 }
@@ -363,7 +372,7 @@ function runPowerShell(sObj, jObj) {
         log('writing script invocation to powershell stdin; invocation=' + scriptInvocation);
 
         try {
-            var buffer = new Buffer('.\\' + scriptPath + ' | Out-File ' + outputPath + ' -Encoding UTF8', 'utf16le');
+            var buffer = strToPowershellEncodedCommand('.\\' + scriptPath + ' | Out-File ' + outputPath + ' -Encoding UTF8');
             var invocation = 'powershell -NoLogo -ExecutionPolicy Bypass -EncodedCommand ' + buffer.toString('base64');
             log('oneliner: ' + invocation);
             log('version: ' + JSON.stringify(process.versions));
