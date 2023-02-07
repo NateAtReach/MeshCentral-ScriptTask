@@ -1,7 +1,7 @@
 {
   "name": "ScriptTask",
   "shortName": "scripttask",
-  "version": "0.0.39",
+  "version": "0.0.40",
   "author": "Ryan Blenis",
   "description": "Script (PowerShell, BAT, Bash) runner for endpoints",
   "hasAdminPanel": false,
