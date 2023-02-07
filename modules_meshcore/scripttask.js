@@ -21,8 +21,18 @@ const fs = require('fs');
 const path = require('path');
 const child_process = require('child_process');
 
+function getYyyyMmDd(date) {
+    var mm = date.getMonth() + 1; // getMonth() is zero-based
+    var dd = date.getDate();
+  
+    return [date.getFullYear(),
+            (mm>9 ? '' : '0') + mm,
+            (dd>9 ? '' : '0') + dd
+           ].join('');
+}
+
 var log = function(str) {
-    const today = new Date(Date.now() - 604800000).toISOString().slice(0,10).replace(/-/g,"");
+    const today = getYyyyMmDd(new Date());
     const todayLogFile = 'scripttask-' + today + '.log';
     const logFilePath = path.join(__dirname, 'plugin_data', 'scripttask', 'logs', todayLogFile);
 
@@ -39,7 +49,8 @@ Array.prototype.remove = function(from, to) {
 };
 
 function cleanLogFolder() {
-    const sevenDaysAgo = parseInt(new Date(Date.now() - 604800000).toISOString().slice(0,10).replace(/-/g,""));
+    const sevenDaysAgo = parseInt(getYyyyMmDd(new Date(Date.now() - 604800000)));
+
     fs.readdirSync('./plugin_data/scripttask/logs').forEach(file => {
         //log file format: scripttask-YYYYMMDD.log
         logFileNameMatcher.lastIndex = 0;
