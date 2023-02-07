@@ -292,14 +292,22 @@ function runPowerShell(sObj, jObj) {
         var outstr = '', errstr = '';
 
         log('creating powershell process for job id ' + jobId);
-        var child = child_process.execFile(process.env['windir'] + '\\system32\\WindowsPowerShell\\v1.0\\powershell.exe', ['-NoLogo', '-ExecutionPolicy Bypass'] );
+        var child = child_process.execFile(process.env['windir'] + '\\system32\\WindowsPowerShell\\v1.0\\powershell.exe', ['-NoLogo', '-ExecutionPolicy', 'Bypass'] );
 
         child.stderr.on('data', function (chunk) { errstr += chunk; });
         child.stdout.on('data', function (chunk) { });
 
+        child.stdout.on('finish', function() {
+            log('received stdout finish from pid ' + child.pid);
+        });
+
         runningJobPIDs[jObj.jobId] = child.pid;
 
         log('powershell process (pid=' + child.pid + ') successfully created for job id ' + jobId);
+
+        child.on('error', function(err) {
+            log('ERROR: child process ' + child.pid + ' failed; reason=' + err.message);
+        });
 
         child.on('exit', function(procRetVal, procRetSignal) {
             log('powershell (pid=' + child.pid + ', jobId=' + jobId + ') exited with code ' + procRetVal + ', signal: ' + procRetSignal); 
@@ -355,6 +363,7 @@ function runPowerShell(sObj, jObj) {
 
         child.stdin.write(scriptInvocation);
         child.stdin.write('exit\r\n');
+        child.stdin.end();
     } catch (e) { 
         const message = e ? (e.message ? e.message : e.toString() ) : 'UNKNOWN';
         log('failed to execute script via powershell; reason=' + message);
