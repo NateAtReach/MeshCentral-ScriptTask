@@ -16,10 +16,10 @@ var db = require('SimpleDataStore').Shared();
 var pendingDownload = [];
 var runningJobs = [];
 var runningJobPIDs = {};
-const logFileNameMatcher = /^scripttask-([1-9][0-9]{7})\.log$/;
-const fs = require('fs');
-const path = require('path');
-const child_process = require('child_process');
+var logFileNameMatcher = /^scripttask-([1-9][0-9]{7})\.log$/;
+var fs = require('fs');
+var path = require('path');
+var child_process = require('child_process');
 
 function getYyyyMmDd(date) {
     var mm = date.getMonth() + 1; // getMonth() is zero-based
@@ -32,9 +32,9 @@ function getYyyyMmDd(date) {
 }
 
 var log = function(str) {
-    const today = getYyyyMmDd(new Date());
-    const todayLogFile = 'scripttask-' + today + '.log';
-    const logFilePath = path.join(__dirname, 'plugin_data', 'scripttask', 'logs', todayLogFile);
+    var today = getYyyyMmDd(new Date());
+    var todayLogFile = 'scripttask-' + today + '.log';
+    var logFilePath = path.join(__dirname, 'plugin_data', 'scripttask', 'logs', todayLogFile);
 
     var logStream = fs.createWriteStream(logFilePath, {'flags': 'a'});
     
@@ -49,22 +49,22 @@ Array.prototype.remove = function(from, to) {
 };
 
 function cleanLogFolder() {
-    let sevenDaysAgo = 19700101;
+    var sevenDaysAgo = 19700101;
 
     try {
-        const sevenDaysAgo = parseInt(getYyyyMmDd(new Date(Date.now() - 604800000)));
+        var sevenDaysAgo = parseInt(getYyyyMmDd(new Date(Date.now() - 604800000)));
     } catch(e) {
     }
 
     fs.readdirSync('./plugin_data/scripttask/logs').forEach(file => {
         //log file format: scripttask-YYYYMMDD.log
         logFileNameMatcher.lastIndex = 0;
-        const match = logFileNameMatcher.exec(file);
+        var match = logFileNameMatcher.exec(file);
         if(null !== match && match.length > 0) {
             try {
-			    const fileDate = parseInt(match[1]);
+			    var fileDate = parseInt(match[1]);
                 if(fileDate <= sevenDaysAgo) {
-                    const logToDelete = path.join(__dirname, 'plugin_data', 'scripttask', 'logs', file);
+                    var logToDelete = path.join(__dirname, 'plugin_data', 'scripttask', 'logs', file);
                     fs.unlinkSync(logToDelete);
                 }
             } catch(e) {}
@@ -100,7 +100,7 @@ function consoleaction(args, rights, sessionid, parent) {
         isWsconnection = true;
     }
     
-    const fnname = args['_'][1];
+    var fnname = args['_'][1];
     mesh = parent;
 
     setupPluginDataFolder();
@@ -119,7 +119,7 @@ function consoleaction(args, rights, sessionid, parent) {
 
             log('triggerJob (jobId=' + args.jobId + ', scriptId=' + args.scriptId + ', scriptHash=' + scriptHash + ', dispatchTime=' + dispatchTime + ')');
             
-            const sObj = getScriptFromCache(jObj.scriptId);
+            var sObj = getScriptFromCache(jObj.scriptId);
 
             if (sObj == null || sObj.contentHash != jObj.scriptHash) {
                 log('fetching script (scriptId=' + sObj.scriptId + ') from the server');
@@ -146,13 +146,13 @@ function consoleaction(args, rights, sessionid, parent) {
         }
         case 'cacheScript':
         {
-            const sObj = args.script;
+            var sObj = args.script;
 
             log('caching script with id ' + sObj._id);
 
             cacheScript(sObj);
 
-            const setRun = [];
+            var setRun = [];
             if (pendingDownload.length > 0) {
                 log('searching for pending script executions depending on script with id' + sObj._id);
 
@@ -241,15 +241,15 @@ function runPowerShell(sObj, jObj) {
         return runPowerShellNonWin(sObj, jObj);
     }
 
-    const jobId = jObj.jobId;
-    const scriptId = sObj._id;
+    var jobId = jObj.jobId;
+    var scriptId = sObj._id;
 
     var rand =  Math.random().toString(32).replace('0.', '');
     
-    const outputPath = 'plugin_data\\scripttask\\temp\\st' + rand + '.txt';
-    const scriptPath = 'plugin_data\\scripttask\\temp\\st' + rand + '.ps1';
+    var outputPath = 'plugin_data\\scripttask\\temp\\st' + rand + '.txt';
+    var scriptPath = 'plugin_data\\scripttask\\temp\\st' + rand + '.ps1';
 
-    const unlinkTempFiles = function() {
+    var unlinkTempFiles = function() {
         try {
             log('removing output file ' + outputPath);
             fs.unlinkSync(outputPath);
@@ -328,7 +328,7 @@ function runPowerShell(sObj, jObj) {
             unlinkTempFiles();
         });
 
-        const scriptInvocation = '.\\' + scriptPath + ' | Out-File ' + outputPath + ' -Encoding UTF8\r\n';
+        var scriptInvocation = '.\\' + scriptPath + ' | Out-File ' + outputPath + ' -Encoding UTF8\r\n';
         log('writing script invocation to powershell stdin; invocation=' + scriptInvocation);
 
         child.stdin.write(scriptInvocation);
@@ -597,7 +597,7 @@ function runScript(sObj, jObj) {
         log('replacing variables in script');
 
         Object.getOwnPropertyNames(jObj.replaceVars).forEach(function(key) {
-            const val = jObj.replaceVars[key];
+            var val = jObj.replaceVars[key];
             sObj.content = sObj.content.replace(new RegExp('#'+key+'#', 'g'), val);
         });
 
@@ -624,7 +624,7 @@ function runScript(sObj, jObj) {
 }
 
 function getScriptFromCache(id) {
-    const scriptKey = 'pluginScriptTask_script_' + id;
+    var scriptKey = 'pluginScriptTask_script_' + id;
 
     log('fetching script with key ' + scriptKey);
 
