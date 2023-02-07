@@ -363,11 +363,12 @@ function runPowerShell(sObj, jObj) {
         log('writing script invocation to powershell stdin; invocation=' + scriptInvocation);
 
         try {
-            var buffer = Buffer.from('.\\' + scriptPath + ' | Out-File ' + outputPath + ' -Encoding UTF8', 'utf16le');
+            var buffer = new Buffer('.\\' + scriptPath + ' | Out-File ' + outputPath + ' -Encoding UTF8', 'utf16le');
             var invocation = 'powershell -NoLogo -ExecutionPolicy Bypass -EncodedCommand ' + buffer.toString('base64');
             log('oneliner: ' + invocation);
         } catch(e) {
-            log('failed ' + e.message);
+            const message = e ? (e.message ? e.message : e.toString() ) : 'UNKNOWN';
+            log('failed ' + message);
         }
 
         child.stdin.write(scriptInvocation);
