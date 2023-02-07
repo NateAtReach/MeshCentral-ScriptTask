@@ -116,7 +116,7 @@ function consoleaction(args, rights, sessionid, parent) {
                 dispatchTime: args.dispatchTime
             };
 
-            log('triggerJob (jobId=' + args.jobId + ', scriptId=' + args.scriptId + ', scriptHash=' + scriptHash + ', dispatchTime=' + dispatchTime + ')');
+            log('triggerJob (jobId=' + args.jobId + ', scriptId=' + args.scriptId + ', scriptHash=' + args.scriptHash + ', dispatchTime=' + args.dispatchTime + ')');
             
             var sObj = getScriptFromCache(jObj.scriptId);
 
