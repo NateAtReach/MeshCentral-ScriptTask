@@ -20,6 +20,10 @@ var logFileNameMatcher = /^scripttask-([1-9][0-9]{7})\.log$/;
 var fs = require('fs');
 var child_process = require('child_process');
 
+function isNullish(thing) {
+    return typeof thing === 'undefined' || null === thing;
+}
+
 function getYyyyMmDd(date) {
     var mm = date.getMonth() + 1; // getMonth() is zero-based
     var dd = date.getDate();
@@ -207,7 +211,7 @@ function consoleaction(args, rights, sessionid, parent) {
 }
 
 function finalizeJob(job, retVal, errVal) {
-    if (errVal !== null && errVal.stack !== null) {
+    if (!isNullish(errVal) && !isNullish(errVal.stack)) {
         errVal = errVal.stack;
     }
 
