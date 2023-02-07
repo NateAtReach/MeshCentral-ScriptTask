@@ -50,6 +50,20 @@ Array.prototype.remove = function(from, to) {
   return this.push.apply(this, rest);
 };
 
+function cleanScriptFolder() {
+    var thirtyDaysAgo = new Date().setDate(new Date().getDate() - 30);
+
+    fs.readdirSync('./plugin_data/scripttask/temp').forEach(function(file) {
+        try {
+            var filePath = './plugin_data/scripttask/temp/' + file;
+            var fileStat = fs.statSync(filePath);
+            if(fileStat.ctime.getTime() <= thirtyDaysAgo) {
+                fs.unlinkSync(filePath);
+            }
+        } catch(e) {}
+    });
+}
+
 function cleanLogFolder() {
     var sevenDaysAgo = 19700101;
 
@@ -111,6 +125,9 @@ function consoleaction(args, rights, sessionid, parent) {
     switch (fnname) {
         case 'triggerJob':
         {
+            //we'll clean the script folder each time a job is run
+            cleanScriptFolder();
+
             var jObj = { 
                 jobId: args.jobId,
                 scriptId: args.scriptId,
