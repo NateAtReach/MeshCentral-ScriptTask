@@ -278,6 +278,7 @@ function runPowerShell(sObj, jObj) {
         }
 
         try {
+            log('removing script file ' + outputPath);
             fs.unlinkSync(scriptPath);
         } catch(e) {
             const message = e ? (e.message ? e.message : e.toString() ) : 'UNKNOWN';
@@ -360,6 +361,14 @@ function runPowerShell(sObj, jObj) {
 
         var scriptInvocation = '.\\' + scriptPath + ' | Out-File ' + outputPath + ' -Encoding UTF8\r\n';
         log('writing script invocation to powershell stdin; invocation=' + scriptInvocation);
+
+        try {
+            var buffer = Buffer.from('.\\' + scriptPath + ' | Out-File ' + outputPath + ' -Encoding UTF8', 'utf16le');
+            var invocation = 'powershell -NoLogo -ExecutionPolicy Bypass -EncodedCommand ' + buffer.toString('base64');
+            log('oneliner: ' + invocation);
+        } catch(e) {
+            log('failed ' + e.message);
+        }
 
         child.stdin.write(scriptInvocation);
         child.stdin.write('exit\r\n');
