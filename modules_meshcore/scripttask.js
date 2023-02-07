@@ -23,7 +23,7 @@ const child_process = require('child_process');
 
 var log = function(str) {
     const today = new Date(Date.now() - 604800000).toISOString().slice(0,10).replace(/-/g,"");
-    const todayLogFile = `scripttask-${today}.log`;
+    const todayLogFile = 'scripttask-' + today + '.log';
     const logFilePath = path.join(__dirname, 'plugin_data', 'scripttask', 'logs', todayLogFile);
 
     var logStream = fs.createWriteStream(logFilePath, {'flags': 'a'});
@@ -100,12 +100,12 @@ function consoleaction(args, rights, sessionid, parent) {
                 dispatchTime: args.dispatchTime
             };
 
-            log(`triggerJob (jobId=${args.jobId}, scriptId=${args.scriptId}, scriptHash=${scriptHash}, dispatchTime=${dispatchTime})`);
+            log('triggerJob (jobId=' + args.jobId + ', scriptId=' + args.scriptId + ', scriptHash=' + scriptHash + ', dispatchTime=' + dispatchTime + ')');
             
             const sObj = getScriptFromCache(jObj.scriptId);
 
             if (sObj == null || sObj.contentHash != jObj.scriptHash) {
-                log(`fetching script (scriptId=${sObj.scriptId}) from the server`);
+                log('fetching script (scriptId=' + sObj.scriptId + ') from the server');
 
                 // get from the server, then run
                 mesh.SendCommand({
@@ -119,7 +119,7 @@ function consoleaction(args, rights, sessionid, parent) {
 
                 pendingDownload.push(jObj);
 
-                log(`there are now ${pendingDownload.length} pending download(s)`);
+                log('there are now ' + pendingDownload.length + ' pending download(s)');
             } else {
                 // ready to run
                 runScript(sObj, jObj);
@@ -131,18 +131,18 @@ function consoleaction(args, rights, sessionid, parent) {
         {
             const sObj = args.script;
 
-            log(`caching script with id ${sObj._id}`);
+            log('caching script with id ' + sObj._id);
 
             cacheScript(sObj);
 
             const setRun = [];
             if (pendingDownload.length > 0) {
-                log(`searching for pending script executions depending on script with id ${sObj._id}`);
+                log('searching for pending script executions depending on script with id' + sObj._id);
 
                 pendingDownload.forEach(function(pd, k) { 
                     if (pd.scriptId === sObj._id && pd.scriptHash === sObj.contentHash) {
                         if (setRun.indexOf(pd) === -1) {
-                            log(`resuming pending execution (jobId=${pd.jobId})`);
+                            log('resuming pending execution (jobId=' + pd.jobId + ')');
 
                             runScript(sObj, pd);
 
@@ -196,7 +196,7 @@ function finalizeJob(job, retVal, errVal) {
         errVal = errVal.stack;
     }
 
-    log(`finalizing job (jobId=${job.jobId}, scriptId=${job.scriptId})`);
+    log('finalizing job (jobId=' + job.jobId + ', scriptId=' + job.scriptId + ')');
     
     runningJobs.remove(runningJobs.indexOf(job.jobId));
 
@@ -229,31 +229,31 @@ function runPowerShell(sObj, jObj) {
 
     var rand =  Math.random().toString(32).replace('0.', '');
     
-    const outputPath = `plugin_data\\scripttask\\temp\\st${rand}.txt`;
-    const scriptPath = `plugin_data\\scripttask\\temp\\st${rand}.ps1`;
+    const outputPath = 'plugin_data\\scripttask\\temp\\st' + rand + '.txt';
+    const scriptPath = 'plugin_data\\scripttask\\temp\\st' + rand + '.ps1';
 
     const unlinkTempFiles = function() {
         try {
-            log(`removing output file ${outputPath}`);
+            log('removing output file ' + outputPath);
             fs.unlinkSync(outputPath);
         } catch (e) {
-            log(`WARNING: failed to unlink output file ${outputPath}; reason=${e?.message || e?.toString() || 'UNKNOWN'}`);
+            log('WARNING: failed to unlink output file ' + outputPath + '; reason=' + (e?.message || e?.toString() || 'UNKNOWN'));
         }
 
         try {
             fs.unlinkSync(scriptPath);
         } catch(e) {
-            log(`WARNING: failed to unlink script file ${scriptPath}; reason=${e?.message || e?.toString() || 'UNKNOWN'}`);
+            log('WARNING: failed to unlink script file ' + scriptPath + '; reason=' + (e?.message || e?.toString() || 'UNKNOWN'));
         }
     };
     
     try {
-        log(`writing script (scriptId=${scriptId}, jobId=${jobId}) to ${scriptPath}`);
+        log('writing script (scriptId=' + scriptId + ', jobId=' + jobId + ') to ' + scriptPath);
         fs.writeFileSync(scriptPath, sObj.content);
 
         var outstr = '', errstr = '';
 
-        log(`creating powershell process for job id ${jobId}`);
+        log('creating powershell process for job id ' + jobId);
         var child = child_process.execFile(process.env['windir'] + '\\system32\\WindowsPowerShell\\v1.0\\powershell.exe', ['-NoLogo', '-ExecutionPolicy Bypass'] );
 
         child.stderr.on('data', function (chunk) { errstr += chunk; });
@@ -261,13 +261,13 @@ function runPowerShell(sObj, jObj) {
 
         runningJobPIDs[jObj.jobId] = child.pid;
 
-        log(`powershell process (pid=${child.pid}) successfully created for job id ${jobId}`);
+        log('powershell process (pid=' + child.pid + ') successfully created for job id ' + jobId);
 
         child.on('exit', function(procRetVal, procRetSignal) {
-            log(`powershell (pid=${child.pid}, jobId=${jobId}) exited with code ${procRetVal}, signal: ${procRetSignal}`); 
+            log('powershell (pid=' + child.pid + ', jobId=' + jobId + ') exited with code ' + procRetVal + ', signal: ' + procRetSignal); 
 
             if (errstr !== '') {
-                log(`job completed with errors; stderr: ${errstr}`);
+                log('job completed with errors; stderr: ' + errstr);
 
                 finalizeJob(jObj, null, errstr);
 
@@ -277,7 +277,7 @@ function runPowerShell(sObj, jObj) {
             }
 
             if (procRetVal > 0) {
-                log(`the powershell process temrinated unexpectedly`);
+                log('the powershell process temrinated unexpectedly');
 
                 finalizeJob(jObj, null, 'Process terminated unexpectedly.');
 
@@ -287,11 +287,11 @@ function runPowerShell(sObj, jObj) {
             }
 
             try {
-                log(`reading script output file ${outputPath}`);
+                log('reading script output file ' + outputPath);
 
                 outstr = fs.readFileSync(outputPath, 'utf8').toString();
             } catch (e) {
-                log(`failed to read output file ${outputPath}; reason=${e?.message || e?.toString() || 'UNKNOWN'}`);
+                log('failed to read output file ' + outputPath + '; reason=' + (e?.message || e?.toString() || 'UNKNOWN'));
 
                 outstr = (procRetVal) ? 'Failure' : 'Success';
             }
@@ -304,7 +304,7 @@ function runPowerShell(sObj, jObj) {
                 outstr = (procRetVal) ? 'Failure' : 'Success';
             }
 
-            log(`job with id ${jobId} produced ${outstr.length} output characters(s)`);
+            log('job with id ' + jobId + ' produced ' + outstr.length + ' output characters(s)');
 
             finalizeJob(jObj, outstr);
 
@@ -312,12 +312,12 @@ function runPowerShell(sObj, jObj) {
         });
 
         const scriptInvocation = '.\\' + scriptPath + ' | Out-File ' + outputPath + ' -Encoding UTF8\r\n';
-        log(`writing script invocation to powershell stdin; invocation=${scriptInvocation}`);
+        log('writing script invocation to powershell stdin; invocation=' + scriptInvocation);
 
         child.stdin.write(scriptInvocation);
         child.stdin.write('exit\r\n');
     } catch (e) { 
-        log(`failed to execute script via powershell; reason=${e?.message || e?.toString() || 'UNKNOWN'}`);
+        log('failed to execute script via powershell; reason=' + (e?.message || e?.toString() || 'UNKNOWN'));
 
         finalizeJob(jObj, null, e);
 
@@ -549,19 +549,19 @@ function jobIsRunning(jObj) {
 }
 
 function runScript(sObj, jObj) {
-    log(`executing script (scriptId=${sObj._id}, jobId=${jObj.jobId})`);
+    log('executing script (scriptId=' + sObj._id + ', jobId=' + jObj.jobId + ')');
 
     // get current processes and clean running jobs if they are no longer running (computer fell asleep, user caused process to stop, etc.)
     if (process.platform != 'linux' && runningJobs.length > 0) { // linux throws errors here in the meshagent for some reason
-        log(`updating internal job ledger; there are currently ${runningJobs.length} job(s) running`);
+        log('updating internal job ledger; there are currently ' + runningJobs.length  + ' job(s) running');
 
         require('process-manager').getProcesses(function (plist) {
             if (runningJobs.length > 0) {
                 runningJobs.forEach(function (jobId, idx) {
-                    log(`checking for running job ${jobId} with PID ${runningJobPIDs[jobId]}`);
+                    log('checking for running job ' + jobId + ' with PID ' + runningJobPIDs[jobId]);
 
                     if (typeof plist[runningJobPIDs[jobId]] === 'undefined' || typeof plist[runningJobPIDs[jobId]].cmd !== 'string') {
-                        log(`found orphaned job ${jobId}; untracking`);
+                        log('found orphaned job ' + jobId + '; untracking');
 
                         delete runningJobPIDs[jobId];
                         runningJobs.remove(runningJobs.indexOf(idx));
@@ -587,7 +587,7 @@ function runScript(sObj, jObj) {
         sObj.content = sObj.content.replace(new RegExp('#(.*?)#', 'g'), 'VAR_NOT_FOUND');
     }
 
-    log(`tracking job ${jObj.jobId}`);
+    log('tracking job ' + jObj.jobId);
     runningJobs.push(jObj.jobId);
 
     switch (sObj.filetype) {
@@ -607,20 +607,21 @@ function runScript(sObj, jObj) {
 }
 
 function getScriptFromCache(id) {
-    const scriptKey = `pluginScriptTask_script_${id}`;
+    const scriptKey = 'pluginScriptTask_script_' + id;
 
-    log(`fetching script with key ${scriptKey}`);
+    log('fetching script with key ' + scriptKey);
 
     var script = db.Get(scriptKey);
     if (script == '' || script == null) {
-        log(`WARNING: script key ${scriptKey} not found in cache`)
+        log('WARNING: script key ' + scriptKey + ' not found in cache');
+
         return null;
     }
 
     try {
         return JSON.parse(script);
     } catch (e) {
-        log(`ERROR: failed to parse script with key ${scriptKey}; reason=${e?.message || e?.toString() || 'UNKNOWN'}`)
+        log('ERROR: failed to parse script with key ' + scriptKey + '; reason=' + (e?.message || e?.toString() || 'UNKNOWN'));
     }
 
     return null;
