@@ -254,13 +254,15 @@ function runPowerShell(sObj, jObj) {
             log('removing output file ' + outputPath);
             fs.unlinkSync(outputPath);
         } catch (e) {
-            log('WARNING: failed to unlink output file ' + outputPath + '; reason=' + (e?.message || e?.toString() || 'UNKNOWN'));
+            const message = e ? (e.message ? e.message : e.toString() ) : 'UNKNOWN';
+            log('WARNING: failed to unlink output file ' + outputPath + '; reason=' + message);
         }
 
         try {
             fs.unlinkSync(scriptPath);
         } catch(e) {
-            log('WARNING: failed to unlink script file ' + scriptPath + '; reason=' + (e?.message || e?.toString() || 'UNKNOWN'));
+            const message = e ? (e.message ? e.message : e.toString() ) : 'UNKNOWN';
+            log('WARNING: failed to unlink script file ' + scriptPath + '; reason=' + message);
         }
     };
     
@@ -308,7 +310,8 @@ function runPowerShell(sObj, jObj) {
 
                 outstr = fs.readFileSync(outputPath, 'utf8').toString();
             } catch (e) {
-                log('failed to read output file ' + outputPath + '; reason=' + (e?.message || e?.toString() || 'UNKNOWN'));
+                const message = e ? (e.message ? e.message : e.toString() ) : 'UNKNOWN';
+                log('failed to read output file ' + outputPath + '; reason=' + message);
 
                 outstr = (procRetVal) ? 'Failure' : 'Success';
             }
@@ -334,7 +337,8 @@ function runPowerShell(sObj, jObj) {
         child.stdin.write(scriptInvocation);
         child.stdin.write('exit\r\n');
     } catch (e) { 
-        log('failed to execute script via powershell; reason=' + (e?.message || e?.toString() || 'UNKNOWN'));
+        const message = e ? (e.message ? e.message : e.toString() ) : 'UNKNOWN';
+        log('failed to execute script via powershell; reason=' + message);
 
         finalizeJob(jObj, null, e);
 
@@ -638,7 +642,8 @@ function getScriptFromCache(id) {
     try {
         return JSON.parse(script);
     } catch (e) {
-        log('ERROR: failed to parse script with key ' + scriptKey + '; reason=' + (e?.message || e?.toString() || 'UNKNOWN'));
+        const message = e ? (e.message ? e.message : e.toString() ) : 'UNKNOWN';
+        log('ERROR: failed to parse script with key ' + scriptKey + '; reason=' + message);
     }
 
     return null;
