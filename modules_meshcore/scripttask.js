@@ -49,19 +49,25 @@ Array.prototype.remove = function(from, to) {
 };
 
 function cleanLogFolder() {
-    const sevenDaysAgo = parseInt(getYyyyMmDd(new Date(Date.now() - 604800000)));
+    let sevenDaysAgo = 19700101;
+
+    try {
+        const sevenDaysAgo = parseInt(getYyyyMmDd(new Date(Date.now() - 604800000)));
+    } catch(e) {
+    }
 
     fs.readdirSync('./plugin_data/scripttask/logs').forEach(file => {
         //log file format: scripttask-YYYYMMDD.log
         logFileNameMatcher.lastIndex = 0;
         const match = logFileNameMatcher.exec(file);
         if(null !== match && match.length > 0) {
-			const fileDate = parseInt(match[1]);
-			if(fileDate <= sevenDaysAgo) {
-				const logToDelete = path.join(__dirname, 'plugin_data', 'scripttask', 'logs', file);
-				console.log({ logToDelete });
-				//fs.unlinkSync(logToDelete);
-			}
+            try {
+			    const fileDate = parseInt(match[1]);
+                if(fileDate <= sevenDaysAgo) {
+                    const logToDelete = path.join(__dirname, 'plugin_data', 'scripttask', 'logs', file);
+                    fs.unlinkSync(logToDelete);
+                }
+            } catch(e) {}
         }
     });
 }
