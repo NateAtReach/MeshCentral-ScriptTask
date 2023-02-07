@@ -56,7 +56,7 @@ function cleanLogFolder() {
     } catch(e) {
     }
 
-    fs.readdirSync('./plugin_data/scripttask/logs').forEach(file => {
+    fs.readdirSync('./plugin_data/scripttask/logs').forEach(function(file) {
         //log file format: scripttask-YYYYMMDD.log
         logFileNameMatcher.lastIndex = 0;
         var match = logFileNameMatcher.exec(file);
