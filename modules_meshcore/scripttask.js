@@ -18,7 +18,6 @@ var runningJobs = [];
 var runningJobPIDs = {};
 var logFileNameMatcher = /^scripttask-([1-9][0-9]{7})\.log$/;
 var fs = require('fs');
-var path = require('path');
 var child_process = require('child_process');
 
 function getYyyyMmDd(date) {
@@ -34,7 +33,7 @@ function getYyyyMmDd(date) {
 var log = function(str) {
     var today = getYyyyMmDd(new Date());
     var todayLogFile = 'scripttask-' + today + '.log';
-    var logFilePath = path.join(__dirname, 'plugin_data', 'scripttask', 'logs', todayLogFile);
+    var logFilePath = 'plugin_data\\scripttask\\logs\\' + todayLogFile;
 
     var logStream = fs.createWriteStream(logFilePath, {'flags': 'a'});
     
@@ -64,7 +63,7 @@ function cleanLogFolder() {
             try {
 			    var fileDate = parseInt(match[1]);
                 if(fileDate <= sevenDaysAgo) {
-                    var logToDelete = path.join(__dirname, 'plugin_data', 'scripttask', 'logs', file);
+                    var logToDelete = 'plugin_data\\scripttask\\logs\\' + file;
                     fs.unlinkSync(logToDelete);
                 }
             } catch(e) {}
