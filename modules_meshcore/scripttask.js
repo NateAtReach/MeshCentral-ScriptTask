@@ -41,7 +41,7 @@ var log = function(str) {
 
     var logStream = fs.createWriteStream(logFilePath, {'flags': 'a'});
     
-    logStream.end(new Date().toLocaleString()+': '+ str.replace('\r', '[CR]').replace('\n', '[LF]') + '\n');
+    logStream.end(new Date().toLocaleString() + ': ' + str.replace('\r', '[CR]').replace('\n', '[LF]') + '\n');
 }
 
 Array.prototype.remove = function(from, to) {
@@ -141,7 +141,7 @@ function consoleaction(args, rights, sessionid, parent) {
             var sObj = getScriptFromCache(jObj.scriptId);
 
             if (sObj == null || sObj.contentHash != jObj.scriptHash) {
-                log('fetching script (scriptId=' + sObj.scriptId + ') from the server');
+                log('fetching script (scriptId=' + jObj.scriptId + ') from the server');
 
                 // get from the server, then run
                 mesh.SendCommand({
