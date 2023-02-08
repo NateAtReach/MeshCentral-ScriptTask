@@ -189,6 +189,8 @@ function getNextJobInState(state) {
  * Removes stale job entries from the front of the queue.
  */
 function pruneJobQueue() {
+    log('pruning job queue');
+
     //remove old job definitions from the front of the queue.
 
     var fifteenMinutesAgo = Date.now() - 900000;
@@ -196,12 +198,20 @@ function pruneJobQueue() {
 
     var firstJob = jobQueue.length > 0 ? jobQueue[0] : undefined;
     while(typeof firstJob !== 'undefined') {
-        if((typeof firstJob.utcCompletedAt === 'number' && firstJob.utcCompletedAt <= fifteenMinutesAgo) || (typeof firstJob.utcStartedAt === 'number' && firstJob.utcStartedAt <= twentyFiveMinutesAgo)) {
+        var completedStale = typeof firstJob.utcCompletedAt === 'number' && firstJob.utcCompletedAt <= fifteenMinutesAgo;
+        var startedStale = typeof firstJob.utcStartedAt === 'number' && firstJob.utcStartedAt <= twentyFiveMinutesAgo;
+
+        log('firstJob: utcCompletedAt=' + firstJob.utcCompletedAt + ', utcStartedAt=' + firstJob.utcStartedAt + ', completedStale=' + completedStale + 'startedStale=' + startedStale);
+
+        if(completedStale || startedStale) {
+            log('firstJob is stale, removing from queue');
             jobQueue.shift();
         } else {
+            log('firstJob is not stale, breaking loop');
             break;
         }
 
+        log('fetching next job from queue');
         firstJob = jobQueue.length > 0 ? jobQueue[0] : undefined;
     }
 }
