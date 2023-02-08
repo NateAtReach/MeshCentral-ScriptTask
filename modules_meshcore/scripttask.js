@@ -552,19 +552,14 @@ function runPowerShell2(sObj, jObj) {
 
         var outstr = '', errstr = '';
 
-        var buffer = strToPowershellEncodedCommand('.\\' + scriptPath + ' | Out-File ' + outputPath + ' -Encoding UTF8');
+        var buffer = strToPowershellEncodedCommand('$ProgressPreference = "SilentlyContinue"\r\n.\\' + scriptPath + ' | Out-File ' + outputPath + ' -Encoding UTF8');
         var invocationParams = ['-NonInteractive', '-NoProfile', '-NoLogo', '-ExecutionPolicy', 'Bypass', '-EncodedCommand', buffer.toString('base64')];
         var powershellPath = process.env['windir'] + '\\system32\\WindowsPowerShell\\v1.0\\powershell.exe';
 
         log('creating powershell process for job id ' + jobId + '(powershellPath=' + powershellPath + ',invocationParams=' + JSON.stringify(invocationParams) + ')');
         var child = child_process.execFile(
             powershellPath,
-            invocationParams,
-            {
-                env: {
-                    ProgressPreference: 'SilentlyContinue'
-                }
-            }
+            invocationParams
         );
 
         jObj.scriptPid = child.pid;
