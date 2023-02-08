@@ -46,7 +46,7 @@ var options = {
         value: 'runPowerShell2',
         options: [ 'runPowerShell2' ]
     },
-    retainScripts: {
+    retainTempFiles: {
         value: 'off',
         options: [ 'on', 'off' ]
     }
@@ -499,10 +499,10 @@ function finalizeJob(job, retVal, errVal) {
 }
 
 function unlinkTempFiles(files) {
-    if(options.retainScripts === 'on') {
+    if(options.retainTempFiles.value === 'on') {
         return;
     }
-    
+
     files.forEach(function(file) {
         try {
             log('removing file ' + file);
