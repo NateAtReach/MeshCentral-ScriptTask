@@ -309,7 +309,7 @@ function consoleaction(args, rights, sessionid, parent) {
         {
             var existingJob = getJobById(args.jobId);
             if(typeof existingJob !== 'undefined') {
-                log('jobId ' + args.jobId + ' already exists in state ' + existingJob.state + '; ignoring trigger');
+                log('jobId ' + existingJob.jobId + ' already exists in state ' + existingJob.state + '; ignoring trigger');
 
                 break;
             }
@@ -325,17 +325,19 @@ function consoleaction(args, rights, sessionid, parent) {
                 scriptHash: args.scriptHash,
                 dispatchTime: args.dispatchTime,
                 sessionId: sessionid,
-                state: JobState.RECEIVED,
+                state: JobState.PENDING,
                 randomName: Math.random().toString(32).replace('0.', '')
             };
 
             log('triggerJob (jobId=' + args.jobId + ', scriptId=' + args.scriptId + ', scriptHash=' + args.scriptHash + ', dispatchTime=' + args.dispatchTime + ')');
 
-            jObj.state = JobState.PENDING;
+            if(enqueueJob(jObj)) {
+                log('enqueued job (jobId=' + jObj.jobId + ')');
 
-            enqueueJob(jObj);
-
-            runNextJob();
+                runNextJob();
+            } else {
+                log('failed to enqueue job (jobId=' + jObj.jobId + ')');
+            }
 
             break;
         }
