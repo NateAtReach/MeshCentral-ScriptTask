@@ -231,23 +231,52 @@ function consoleaction(args, rights, sessionid, parent) {
             var argsAsString = JSON.stringify(args);
             log('logCommandArgs: ' + argsAsString);
             return JSON.stringify(argsAsString);
+        case 'getOpt':
+            var optName = args['_'][2];
+
+            var optionKeys = Object.keys(options);
+            if(optionKeys.indexOf(optName) === -1) {
+                var message = 'invalid option "' + optName + '". Valid option names are: "' + optionKeys.join('", "') + '"';
+
+                log('getOpt: ' + message);
+
+                return message;
+            }
+
+            var message = 'option "' + optName + '" set to "' + options[optName].value + '"';
+
+            log('getOpt: ' + message);
+
+            return message;
         case 'setOpt':
             var optName = args['_'][2];
             var optValue = args['_'][3];
 
             var optionKeys = Object.keys(options);
             if(optionKeys.indexOf(optName) === -1) {
-                return 'invalid option "' + optName + '". Valid option names are: "' + optionKeys.join('", "') + '"';
+                var message = 'invalid option "' + optName + '". Valid option names are: "' + optionKeys.join('", "') + '"';
+
+                log('setOpt: ' + message);
+
+                return message;
             }
 
             var validOptions = options[optName].options;
             if(validOptions.indexOf(optValue) === -1) {
-                return 'invalid value "' + optValue + '" for option "' + optName + '". Valid choices are: "' + validOptions.join('", "') + '"';
+                var message = 'invalid value "' + optValue + '" for option "' + optName + '". Valid choices are: "' + validOptions.join('", "') + '"';
+
+                log('setOpt: ' + message);
+
+                return message;
             }
 
             options[optName].value = optValue;
 
-            return 'option "' + optName + '" set to "' + optValue + '"';
+            var message = 'option "' + optName + '" set to "' + optValue + '"';
+
+            log('setOpt: ' + message);
+
+            return message;
         case 'getPendingJobs':
         {
             var ret = '';
