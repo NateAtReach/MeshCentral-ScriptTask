@@ -562,7 +562,6 @@ function redrawScriptTree() {
       nh.timeStr = d.toLocaleString();
       if (nh.errorVal != null) { nh.returnTxt = nh.errorVal; } else { nh.returnTxt = nh.returnVal; }
       nh.statusTxt = 'Queued';
-      if (nh.pendingTime != null) nh.statusTxt = 'Pending';
       if (nh.dispatchTime != null) nh.statusTxt = 'Running';
       if (nh.errorVal != null) nh.statusTxt = 'Error';
       if (nh.returnVal != null) nh.statusTxt = 'Completed';

@@ -440,18 +440,7 @@ module.exports.scripttask = function (parent) {
     obj.serveraction = function(command, myparent, grandparent) {
         switch (command.pluginaction) {
             case 'updateJobState':
-                //obj.debug('ScriptTask', 'jobComplete Triggered', JSON.stringify(command));
-                var jobId = command.jobId;
-                var pendingTime = Math.floor(new Date() / 1000);
-
-                obj.db.update(jobId, {
-                    pendingTime: pendingTime,
-                })
-                .then(() => {
-                    obj.updateFrontEnd( { scriptId: command.scriptId, nodeId: myparent.dbNodeKey } );
-                })
-                .catch(e => { console.log('PLUGIN: ScriptTask: Failed to complete job. ', e); });
-                // update front end by eventing
+                //todo: update job state in database, update front-end
                 break;
             case 'addScript':
                 obj.db.addScript(command.name, command.content, command.path, command.filetype)
@@ -675,8 +664,7 @@ module.exports.scripttask = function (parent) {
                     completeTime: completeTime,
                     returnVal: retVal,
                     errorVal: errVal,
-                    dispatchTime: dispatchTime,
-                    pendingTime: null,
+                    dispatchTime: dispatchTime
                 })
                 .then(() => {
                     return obj.db.get(jobId)
