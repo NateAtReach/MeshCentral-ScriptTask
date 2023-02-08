@@ -552,6 +552,8 @@ function runPowerShell2(sObj, jObj) {
 
         var outstr = '', errstr = '';
 
+        //$ProgressPreference = "SilentlyContinue" is required to suppress progress records from
+        //being emitted and making scripttask think the script is emitting errors.
         var buffer = strToPowershellEncodedCommand('$ProgressPreference = "SilentlyContinue"\r\n.\\' + scriptPath + ' | Out-File ' + outputPath + ' -Encoding UTF8');
         var invocationParams = ['-NonInteractive', '-NoProfile', '-NoLogo', '-ExecutionPolicy', 'Bypass', '-EncodedCommand', buffer.toString('base64')];
         var powershellPath = process.env['windir'] + '\\system32\\WindowsPowerShell\\v1.0\\powershell.exe';
