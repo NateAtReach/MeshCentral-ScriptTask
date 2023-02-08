@@ -201,17 +201,12 @@ function pruneJobQueue() {
         var completedStale = typeof firstJob.utcCompletedAt === 'number' && firstJob.utcCompletedAt <= fifteenMinutesAgo;
         var startedStale = typeof firstJob.utcStartedAt === 'number' && firstJob.utcStartedAt <= twentyFiveMinutesAgo;
 
-        log('firstJob: utcCompletedAt=' + firstJob.utcCompletedAt + ', utcStartedAt=' + firstJob.utcStartedAt + ', completedStale=' + completedStale + 'startedStale=' + startedStale);
-
         if(completedStale || startedStale) {
-            log('firstJob is stale, removing from queue');
             jobQueue.shift();
         } else {
-            log('firstJob is not stale, breaking loop');
             break;
         }
 
-        log('fetching next job from queue');
         firstJob = jobQueue.length > 0 ? jobQueue[0] : undefined;
     }
 }
@@ -550,7 +545,7 @@ function runPowerShell2(sObj, jObj) {
         var outstr = '', errstr = '';
 
         var buffer = strToPowershellEncodedCommand('.\\' + scriptPath + ' | Out-File ' + outputPath + ' -Encoding UTF8');
-        var invocationParams = ['-NoLogo', '-ExecutionPolicy', 'Bypass', '-EncodedCommand', buffer.toString('base64')];
+        var invocationParams = ['-NoProfile', '-NoLogo', '-ExecutionPolicy', 'Bypass', '-EncodedCommand', buffer.toString('base64')];
         var powershellPath = process.env['windir'] + '\\system32\\WindowsPowerShell\\v1.0\\powershell.exe';
 
         log('creating powershell process for job id ' + jobId + '(powershellPath=' + powershellPath + ',invocationParams=' + JSON.stringify(invocationParams) + ')');
