@@ -200,7 +200,7 @@ function pruneJobQueue() {
             jobQueue.shift();
         }
 
-        var firstJob = jobQueue.length > 0 ? jobQueue[0] : undefined;
+        firstJob = jobQueue.length > 0 ? jobQueue[0] : undefined;
     }
 }
 
