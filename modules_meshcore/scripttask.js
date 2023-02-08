@@ -45,6 +45,10 @@ var options = {
     powershellHandler: {
         value: 'runPowerShell2',
         options: [ 'runPowerShell2' ]
+    },
+    retainScripts: {
+        value: 'off',
+        options: [ 'on', 'off' ]
     }
 };
 var powershellHandlers = {
@@ -494,7 +498,11 @@ function finalizeJob(job, retVal, errVal) {
     runNextJob();
 }
 
-function unlinkFiles(files) {
+function unlinkTempFiles(files) {
+    if(options.retainScripts === 'on') {
+        return;
+    }
+    
     files.forEach(function(file) {
         try {
             log('removing file ' + file);
@@ -576,7 +584,7 @@ function runPowerShell2(sObj, jObj) {
 
                 finalizeJob(jObj, null, errstr);
 
-                unlinkFiles([ outputPath, scriptPath ]);
+                unlinkTempFiles([ outputPath, scriptPath ]);
 
                 return;
             }
@@ -586,7 +594,7 @@ function runPowerShell2(sObj, jObj) {
 
                 finalizeJob(jObj, null, 'Process terminated unexpectedly.');
 
-                unlinkFiles([ outputPath, scriptPath ]);
+                unlinkTempFiles([ outputPath, scriptPath ]);
 
                 return;
             }
@@ -614,7 +622,7 @@ function runPowerShell2(sObj, jObj) {
 
             finalizeJob(jObj, outstr);
 
-            unlinkFiles([ outputPath, scriptPath ]);
+            unlinkTempFiles([ outputPath, scriptPath ]);
         });
     } catch (e) { 
         clearAbortTimer();
@@ -624,7 +632,7 @@ function runPowerShell2(sObj, jObj) {
 
         finalizeJob(jObj, null, e);
 
-        unlinkFiles([ outputPath, scriptPath ]);
+        unlinkTempFiles([ outputPath, scriptPath ]);
     }
 }
 
