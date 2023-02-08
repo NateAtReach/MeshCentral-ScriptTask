@@ -217,6 +217,16 @@ function consoleaction(args, rights, sessionid, parent) {
             clearCache();
 
             return 'The script cache has been cleared';
+        case 'logCommandArgs':
+            var argsAsString = JSON.stringify(args);
+            log('logCommandArgs: ' + argsAsString);
+            return JSON.stringify(argsAsString);
+        case 'debug':
+            //debug_flag = (debug_flag) ? false : true;
+            //var str = (debug_flag) ? 'on' : 'off';
+
+            //return 'Debugging is now ' + str;
+            return 'Not implemented';
         case 'getPendingJobs':
         {
             var ret = '';
@@ -261,6 +271,117 @@ function finalizeJob(job, retVal, errVal) {
         "sessionid": _sessionid,
         "tag": "console"
     });
+}
+
+function unlinkFiles(files) {
+    files.forEach(function(file) {
+        try {
+            log('removing file ' + file);
+            fs.unlinkSync(file);
+        } catch (e) {
+            var message = e ? (e.message ? e.message : e.toString() ) : 'UNKNOWN';
+            log('WARNING: failed to unlink file ' + file + '; reason=' + message);
+        }
+    });
+};
+
+function runPowerShell2(sObj, jObj) {
+    if (process.platform != 'win32') {
+        throw new Error('powershell is not supported on this OS');
+    }
+
+    var jobId = jObj.jobId;
+    var scriptId = sObj._id;
+
+    var rand =  Math.random().toString(32).replace('0.', '');
+    
+    var outputPath = 'plugin_data\\scripttask\\temp\\st' + rand + '.txt';
+    var scriptPath = 'plugin_data\\scripttask\\temp\\st' + rand + '.ps1';
+
+    try {
+        log('writing script (scriptId=' + scriptId + ', jobId=' + jobId + ') to ' + scriptPath);
+        fs.writeFileSync(scriptPath, sObj.content);
+
+        var outstr = '', errstr = '';
+
+        var buffer = strToPowershellEncodedCommand('.\\' + scriptPath + ' | Out-File ' + outputPath + ' -Encoding UTF8');
+        var invocationParams = ['-NoLogo', '-ExecutionPolicy', 'Bypass', '-EncodedCommand', buffer.toString('base64')];
+        var powershellPath = process.env['windir'] + '\\system32\\WindowsPowerShell\\v1.0\\powershell.exe';
+
+        log('creating powershell process for job id ' + jobId + '(powershellPath=' + powershellPath + ',invocationParams=' + JSON.stringify(invocationParams) + ')');
+        var child = child_process.execFile(powershellPath, invocationParams);
+
+        child.stderr.on('data', function (chunk) { errstr += chunk; });
+        child.stdout.on('data', function (chunk) { });
+
+        child.stdout.on('close', function() {
+            log('received stdout close from pid ' + child.pid);
+        });
+
+        runningJobPIDs[jObj.jobId] = child.pid;
+
+        log('powershell process (pid=' + child.pid + ') successfully created for job id ' + jobId);
+
+        child.on('error', function(err) {
+            log('ERROR: child process ' + child.pid + ' failed; reason=' + err.message);
+        });
+
+        child.on('exit', function(procRetVal, procRetSignal) {
+            log('powershell (pid=' + child.pid + ', jobId=' + jobId + ') exited with code ' + procRetVal + ', signal: ' + procRetSignal); 
+
+            if (errstr !== '') {
+                log('job completed with errors; stderr: ' + errstr);
+
+                finalizeJob(jObj, null, errstr);
+
+                unlinkFiles([ outputPath, scriptPath ]);
+
+                return;
+            }
+
+            if (procRetVal > 0) {
+                log('the powershell process temrinated unexpectedly');
+
+                finalizeJob(jObj, null, 'Process terminated unexpectedly.');
+
+                unlinkFiles([ outputPath, scriptPath ]);
+
+                return;
+            }
+
+            try {
+                log('reading script output file ' + outputPath);
+
+                outstr = fs.readFileSync(outputPath, 'utf8').toString();
+            } catch (e) {
+                var message = e ? (e.message ? e.message : e.toString() ) : 'UNKNOWN';
+                log('failed to read output file ' + outputPath + '; reason=' + message);
+
+                outstr = (procRetVal) ? 'Failure' : 'Success';
+            }
+
+            if (outstr) {
+                try {
+                    outstr = outstr.trim();
+                } catch (e) { }
+            } else {
+                outstr = (procRetVal) ? 'Failure' : 'Success';
+            }
+
+            log('job with id ' + jobId + ' produced ' + outstr.length + ' output characters(s)');
+
+            finalizeJob(jObj, outstr);
+
+            unlinkFiles([ outputPath, scriptPath ]);
+        });
+    } catch (e) { 
+        var message = e ? (e.message ? e.message : e.toString() ) : 'UNKNOWN';
+        log('failed to execute script via powershell; reason=' + message);
+
+        finalizeJob(jObj, null, e);
+
+        unlinkFiles([ outputPath, scriptPath ]);
+    }
 }
 
 //@TODO Test powershell on *nix devices with and without powershell installed
@@ -370,16 +491,6 @@ function runPowerShell(sObj, jObj) {
 
         var scriptInvocation = '.\\' + scriptPath + ' | Out-File ' + outputPath + ' -Encoding UTF8\r\n';
         log('writing script invocation to powershell stdin; invocation=' + scriptInvocation);
-
-        try {
-            var buffer = strToPowershellEncodedCommand('.\\' + scriptPath + ' | Out-File ' + outputPath + ' -Encoding UTF8');
-            var invocation = 'powershell -NoLogo -ExecutionPolicy Bypass -EncodedCommand ' + buffer.toString('base64');
-            log('oneliner: ' + invocation);
-            log('version: ' + JSON.stringify(process.versions));
-        } catch(e) {
-            const message = e ? (e.message ? e.message : e.toString() ) : 'UNKNOWN';
-            log('failed ' + message);
-        }
 
         child.stdin.write(scriptInvocation);
         child.stdin.write('exit\r\n');
