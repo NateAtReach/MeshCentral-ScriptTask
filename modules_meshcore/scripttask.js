@@ -703,7 +703,7 @@ function getScriptFromCache(id) {
     try {
         return JSON.parse(script);
     } catch (e) {
-        const message = e ? (e.message ? e.message : e.toString() ) : 'UNKNOWN';
+        var message = e ? (e.message ? e.message : e.toString() ) : 'UNKNOWN';
         log('ERROR: failed to parse script with key ' + scriptKey + '; reason=' + message);
     }
 
