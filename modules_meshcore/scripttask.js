@@ -17,6 +17,16 @@ var pendingDownload = [];
 var runningJobs = [];
 var runningJobPIDs = {};
 var logFileNameMatcher = /^scripttask-([1-9][0-9]{7})\.log$/;
+var options = {
+    powershellHandler: {
+        value: 'runPowerShell',
+        options: [ 'runPowerShell', 'runPowerShell2' ]
+    }
+};
+var powershellHandlers = {
+    runPowerShell: runPowerShell,
+    runPowerShell2: runPowerShell2
+};
 var fs = require('fs');
 var child_process = require('child_process');
 
@@ -221,12 +231,23 @@ function consoleaction(args, rights, sessionid, parent) {
             var argsAsString = JSON.stringify(args);
             log('logCommandArgs: ' + argsAsString);
             return JSON.stringify(argsAsString);
-        case 'debug':
-            //debug_flag = (debug_flag) ? false : true;
-            //var str = (debug_flag) ? 'on' : 'off';
+        case 'setOpt':
+            var optName = args['_'][2];
+            var optValue = args['_'][3];
 
-            //return 'Debugging is now ' + str;
-            return 'Not implemented';
+            var optionKeys = Object.keys(options);
+            if(optionKeys.indexOf(optName) === -1) {
+                return 'invalid option "' + optName + '". Valid option names are: "' + optionKeys.join('", "') + '"';
+            }
+
+            var validOptions = options[optName].options;
+            if(validOptions.indexOf(optValue) === -1) {
+                return 'invalid value "' + optValue + '" for option "' + optName + '". Valid choices are: "' + validOptions.join('", "') + '"';
+            }
+
+            options[optName].value = optValue;
+
+            return 'option "' + optName + '" set to "' + optValue + '"';
         case 'getPendingJobs':
         {
             var ret = '';
@@ -772,7 +793,8 @@ function runScript(sObj, jObj) {
 
     switch (sObj.filetype) {
         case 'ps1':
-            runPowerShell(sObj, jObj);
+            var handler = powershellHandlers[options.powershellHandler.value];
+            handler(sObj, jObj);
         break;
         case 'bat':
             runBat(sObj, jObj);
