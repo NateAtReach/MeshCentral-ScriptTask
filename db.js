@@ -99,6 +99,7 @@ module.exports.CreateDB = function(meshserver) {
               queueTime: nowTime,
               dontQueueUntil: nowTime,
               dispatchTime: null,
+              pendingTime: null,
               completeTime: null,
               node: null,
               scriptId: null,
