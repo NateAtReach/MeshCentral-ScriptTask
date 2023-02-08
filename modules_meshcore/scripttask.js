@@ -333,7 +333,7 @@ function unlinkFiles(files) {
             log('WARNING: failed to unlink file ' + file + '; reason=' + message);
         }
     });
-};
+}
 
 function runPowerShell2(sObj, jObj) {
     if (process.platform != 'win32') {
@@ -355,7 +355,7 @@ function runPowerShell2(sObj, jObj) {
         var outstr = '', errstr = '';
 
         var buffer = strToPowershellEncodedCommand('.\\' + scriptPath + ' | Out-File ' + outputPath + ' -Encoding UTF8');
-        var invocationParams = ['-NoLogo', '-ExecutionPolicy', 'Bypass', '-EncodedCommand', buffer.toString('base64')];
+        var invocationParams = ['-NoProfile', '-NoLogo', '-ExecutionPolicy', 'Bypass', '-EncodedCommand', buffer.toString('base64')];
         var powershellPath = process.env['windir'] + '\\system32\\WindowsPowerShell\\v1.0\\powershell.exe';
 
         log('creating powershell process for job id ' + jobId + '(powershellPath=' + powershellPath + ',invocationParams=' + JSON.stringify(invocationParams) + ')');
