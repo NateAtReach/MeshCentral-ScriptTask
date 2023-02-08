@@ -139,12 +139,20 @@ function cleanLogFolder() {
  * exist.
  */
 function setupPluginDataFolder() {
+    if(!fs.existsSync('./plugin_data')) {
+        fs.mkdirSync('./plugin_data');
+    }
+
+    if(!fs.existsSync('./plugin_data/scripttask')) {
+        fs.mkdirSync('./plugin_data/scripttask');
+    }
+
     if(!fs.existsSync('./plugin_data/scripttask/logs')) {
-        fs.mkdirSync('./plugin_data/scripttask/logs', { recursive: true });
+        fs.mkdirSync('./plugin_data/scripttask/logs');
     }
 
     if(!fs.existsSync('./plugin_data/scripttask/temp')) {
-        fs.mkdirSync('./plugin_data/scripttask/temp', { recursive: true });
+        fs.mkdirSync('./plugin_data/scripttask/temp');
     }
 }
 
