@@ -439,6 +439,9 @@ module.exports.scripttask = function (parent) {
     
     obj.serveraction = function(command, myparent, grandparent) {
         switch (command.pluginaction) {
+            case 'updateJobState':
+                //todo: update job state in database, update front-end
+                break;
             case 'addScript':
                 obj.db.addScript(command.name, command.content, command.path, command.filetype)
                 .then(() => {

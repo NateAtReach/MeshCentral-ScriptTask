@@ -7,24 +7,47 @@
 
 "use strict";
 
+var JobState = {
+    RECEIVED: 1,
+    PENDING: 2,
+    RUNNING: 3,
+    COMPLETE: 4,
+};
+
+/**
+ * A job execution instruction
+ * @typedef {Object} Job
+ * @property {string} jobId - unique idenfitier for the job.
+ * @property {string} scriptId - unique identifier for the script to execute.
+ * @property {Object} replaceVars - Collection of variable replacements.
+ * @property {string} scriptHash - hash of the script contents.
+ * @property {number} dispatchTime - time the job was dispatched by server. UTC millis
+ * @property {string} sessionId - session ID the job was run on
+ * 
+ * @property {number|undefined} scriptPid - OS process ID of the script (if executing)
+ * @property {JobState} state - state of the job
+ * @property {number|undefined} utcStartedAt - UTC millis of when job started running
+ * @property {number|undefined} utcCompletedAt - UTC millis of when the job completed
+ * @property {string|undefined} randomName - random string used to save script and output to disk
+ * @property {number|undefined} abortTimer - setTimeout handle used to abort the running script
+ */
+
 var mesh;
-var obj = this;
-var _sessionid; //global, yuck
 var isWsconnection = false;
 var wscon = null;
 var db = require('SimpleDataStore').Shared();
 var pendingDownload = [];
-var runningJobs = [];
-var runningJobPIDs = {};
+/** @type Array<Job> */
+var jobQueue = [];
+/** @type Array<Job> */
 var logFileNameMatcher = /^scripttask-([1-9][0-9]{7})\.log$/;
 var options = {
     powershellHandler: {
-        value: 'runPowerShell',
-        options: [ 'runPowerShell', 'runPowerShell2' ]
+        value: 'runPowerShell2',
+        options: [ 'runPowerShell2' ]
     }
 };
 var powershellHandlers = {
-    runPowerShell: runPowerShell,
     runPowerShell2: runPowerShell2
 };
 var fs = require('fs');
@@ -121,10 +144,150 @@ function setupPluginDataFolder() {
     }
 }
 
+/**
+ * Finds the specified job in the queue
+ * @param {string} jobId - id of job to find in the queue
+ * @returns {Job|undefined}
+ */
+function getJobById(jobId) {
+    return jobQueue.find(function(job) {
+        return job.jobId === jobId;
+    });
+}
+
+/**
+ * Adds the job to the job queue
+ * @param {Job} job 
+ * @returns {boolean}
+ */
+function enqueueJob(job) {
+    if(getJobById(job.jobId)) {
+        return false;
+    }
+
+    jobQueue.push(job);
+
+    return true;
+}
+
+/**
+ * Returns the next job in the specified state
+ * @param {JobState[keyof JobState]|undefined} state - state to look. Default: JobState.PENDING
+ * @returns {Job|undefined}
+ */
+function getNextJobInState(state) {
+    if(typeof state === 'undefined') {
+        state = JobState.PENDING;
+    }
+
+    return jobQueue.find(function(job) {
+        return job.state === state;
+    });
+}
+
+/**
+ * Removes stale job entries from the front of the queue.
+ */
+function pruneJobQueue() {
+    //remove old job definitions from the front of the queue.
+
+    var fifteenMinutesAgo = Date.now() - 900000;
+    var twentyFiveMinutesAgo = fifteenMinutesAgo - 1500000;
+
+    var firstJob = jobQueue.length > 0 ? jobQueue[0] : undefined;
+    while(typeof firstJob !== 'undefined') {
+        if((typeof firstJob.utcCompletedAt === 'number' && firstJob.utcCompletedAt <= fifteenMinutesAgo) || (typeof firstJob.utcStartedAt === 'number' && firstJob.utcStartedAt <= twentyFiveMinutesAgo)) {
+            jobQueue.shift();
+        }
+
+        var firstJob = jobQueue.length > 0 ? jobQueue[0] : undefined;
+    }
+}
+
+/**
+ * Returns the number of jobs in the queue
+ * @param {Array<JobState[keyof JobState]>|undefined} states - states to include in count. Default: all but COMPLETE
+ * @returns {number}
+ */
+function getJobCount(states) {
+    if(typeof states === 'undefined') {
+        states = [
+            JobState.RECEIVED,
+            JobState.PENDING,
+            JobState.RUNNING
+        ];
+    }
+
+    var count = 0;
+    jobQueue.forEach(function(job) {
+        if(states.indexOf(job.state) > -1) {
+            ++count;
+        }
+    });
+
+    return count;
+}
+
+function runNextJob() {
+    pruneJobQueue();
+
+    log('there are ' + getJobCount() + ' job(s) in the queue');
+
+    var runningJob = getNextJobInState(JobState.RUNNING);
+    if(typeof runningJob !== 'undefined') {
+        log('WARNING: there is a job already running; aborting runNextJob');
+
+        return;
+    }
+
+    var nextJob = getNextJobInState(JobState.PENDING);
+    if(typeof nextJob === 'undefined') {
+        log('there are no more jobs to run');
+
+        return;
+    }
+
+    log('running job (jobId=' + nextJob.jobId + ') in state PENDING');
+
+    nextJob.state = JobState.RUNNING;
+    nextJob.utcStartedAt = Date.now();
+
+    mesh.SendCommand({
+        "action": "plugin", 
+        "plugin": "scripttask",
+        "pluginaction": "updateJobState",
+        "newState": JobState.RUNNING,
+        "sessionid": nextJob.sessionId,
+        "tag": "console"
+    });
+
+    var sObj = getScriptFromCache(nextJob.scriptId);
+
+    if (sObj == null || sObj.contentHash != nextJob.scriptHash) {
+        log('fetching script (scriptId=' + nextJob.scriptId + ') from the server');
+
+        // get from the server, then run
+        mesh.SendCommand({
+            "action": "plugin", 
+            "plugin": "scripttask",
+            "pluginaction": "getScript",
+            "scriptId": nextJob.scriptId, 
+            "sessionid": nextJob.sessionId,
+            "tag": "console"
+        });
+
+        pendingDownload.push(nextJob);
+
+        log('there are now ' + pendingDownload.length + ' pending download(s)');
+    } else {
+        // ready to run
+        runScript(sObj, nextJob);
+    }
+}
+
 function consoleaction(args, rights, sessionid, parent) {
     isWsconnection = false;
     wscon = parent;
-    _sessionid = sessionid;
 
     if (typeof args['_'] == 'undefined') {
         args['_'] = [];
@@ -144,41 +307,35 @@ function consoleaction(args, rights, sessionid, parent) {
     switch (fnname) {
         case 'triggerJob':
         {
+            var existingJob = getJobById(args.jobId);
+            if(typeof existingJob !== 'undefined') {
+                log('jobId ' + args.jobId + ' already exists in state ' + existingJob.state + '; ignoring trigger');
+
+                break;
+            }
+
             //we'll clean the script folder each time a job is run
             cleanScriptFolder();
 
+            /** @type {Job} */
             var jObj = { 
                 jobId: args.jobId,
                 scriptId: args.scriptId,
                 replaceVars: args.replaceVars,
                 scriptHash: args.scriptHash,
-                dispatchTime: args.dispatchTime
+                dispatchTime: args.dispatchTime,
+                sessionId: sessionid,
+                state: JobState.RECEIVED,
+                randomName: Math.random().toString(32).replace('0.', '')
             };
 
             log('triggerJob (jobId=' + args.jobId + ', scriptId=' + args.scriptId + ', scriptHash=' + args.scriptHash + ', dispatchTime=' + args.dispatchTime + ')');
-            
-            var sObj = getScriptFromCache(jObj.scriptId);
 
-            if (sObj == null || sObj.contentHash != jObj.scriptHash) {
-                log('fetching script (scriptId=' + jObj.scriptId + ') from the server');
+            jObj.state = JobState.PENDING;
 
-                // get from the server, then run
-                mesh.SendCommand({
-                    "action": "plugin", 
-                    "plugin": "scripttask",
-                    "pluginaction": "getScript",
-                    "scriptId": jObj.scriptId, 
-                    "sessionid": _sessionid,
-                    "tag": "console"
-                });
+            enqueueJob(jObj);
 
-                pendingDownload.push(jObj);
-
-                log('there are now ' + pendingDownload.length + ' pending download(s)');
-            } else {
-                // ready to run
-                runScript(sObj, jObj);
-            }
+            runNextJob();
 
             break;
         }
@@ -218,7 +375,7 @@ function consoleaction(args, rights, sessionid, parent) {
                 "action": "plugin", 
                 "plugin": "scripttask",
                 "pluginaction": "clearAllPendingJobs",
-                "sessionid": _sessionid,
+                "sessionid": sessionid,
                 "tag": "console"
             });
 
@@ -296,18 +453,21 @@ function consoleaction(args, rights, sessionid, parent) {
     }
 }
 
+/**
+ * 
+ * @param {Job} job 
+ * @param {*} retVal 
+ * @param {*} errVal 
+ */
 function finalizeJob(job, retVal, errVal) {
+    job.utcCompletedAt = Date.now();
+    job.state = JobState.COMPLETE;
+
     if (!isNullish(errVal) && !isNullish(errVal.stack)) {
         errVal = errVal.stack;
     }
 
     log('finalizing job (jobId=' + job.jobId + ', scriptId=' + job.scriptId + ')');
-    
-    runningJobs.remove(runningJobs.indexOf(job.jobId));
-
-    if (typeof runningJobPIDs[job.jobId] != 'undefined') {
-        delete runningJobPIDs[job.jobId];
-    }
 
     mesh.SendCommand({ 
         "action": "plugin", 
@@ -318,9 +478,11 @@ function finalizeJob(job, retVal, errVal) {
         "retVal": retVal,
         "errVal": errVal,
         "dispatchTime": job.dispatchTime, // include original run time (long running tasks could have tried a re-send)
-        "sessionid": _sessionid,
+        "sessionid": job.sessionId,
         "tag": "console"
     });
+
+    runNextJob();
 }
 
 function unlinkFiles(files) {
@@ -335,6 +497,11 @@ function unlinkFiles(files) {
     });
 }
 
+/**
+ * 
+ * @param {*} sObj 
+ * @param {Job} jObj 
+ */
 function runPowerShell2(sObj, jObj) {
     if (process.platform != 'win32') {
         throw new Error('powershell is not supported on this OS');
@@ -343,10 +510,24 @@ function runPowerShell2(sObj, jObj) {
     var jobId = jObj.jobId;
     var scriptId = sObj._id;
 
-    var rand =  Math.random().toString(32).replace('0.', '');
-    
-    var outputPath = 'plugin_data\\scripttask\\temp\\st' + rand + '.txt';
-    var scriptPath = 'plugin_data\\scripttask\\temp\\st' + rand + '.ps1';
+    var outputPath = 'plugin_data\\scripttask\\temp\\st' + jObj.randomName + '.txt';
+    var scriptPath = 'plugin_data\\scripttask\\temp\\st' + jObj.randomName + '.ps1';
+
+    var clearAbortTimer = function() {
+        if(typeof jObj.abortTimer !== 'undefined') {
+            clearTimeout(jObj.abortTimer);
+            jObj.abortTimer = undefined;
+        }
+    };
+
+    jObj.abortTimer = setTimeout(function() {
+        clearAbortTimer();
+
+        //TODO: abort long-running process
+        log('todo: kill long-running process ' + jObj.scriptPid);
+
+        finalizeJob(jObj, undefined, "The process failed to execute in a timely manner");
+    }, 600000);
 
     try {
         log('writing script (scriptId=' + scriptId + ', jobId=' + jobId + ') to ' + scriptPath);
@@ -361,14 +542,14 @@ function runPowerShell2(sObj, jObj) {
         log('creating powershell process for job id ' + jobId + '(powershellPath=' + powershellPath + ',invocationParams=' + JSON.stringify(invocationParams) + ')');
         var child = child_process.execFile(powershellPath, invocationParams);
 
+        jObj.scriptPid = child.pid;
+
         child.stderr.on('data', function (chunk) { errstr += chunk; });
         child.stdout.on('data', function (chunk) { });
 
         child.stdout.on('close', function() {
             log('received stdout close from pid ' + child.pid);
         });
-
-        runningJobPIDs[jObj.jobId] = child.pid;
 
         log('powershell process (pid=' + child.pid + ') successfully created for job id ' + jobId);
 
@@ -377,6 +558,8 @@ function runPowerShell2(sObj, jObj) {
         });
 
         child.on('exit', function(procRetVal, procRetSignal) {
+            clearAbortTimer();
+
             log('powershell (pid=' + child.pid + ', jobId=' + jobId + ') exited with code ' + procRetVal + ', signal: ' + procRetSignal); 
 
             if (errstr !== '') {
@@ -425,6 +608,8 @@ function runPowerShell2(sObj, jObj) {
             unlinkFiles([ outputPath, scriptPath ]);
         });
     } catch (e) { 
+        clearAbortTimer();
+
         var message = e ? (e.message ? e.message : e.toString() ) : 'UNKNOWN';
         log('failed to execute script via powershell; reason=' + message);
 
@@ -434,377 +619,46 @@ function runPowerShell2(sObj, jObj) {
     }
 }
 
-//@TODO Test powershell on *nix devices with and without powershell installed
-function runPowerShell(sObj, jObj) {
-    if (process.platform != 'win32') {
-        return runPowerShellNonWin(sObj, jObj);
-    }
-
-    var jobId = jObj.jobId;
-    var scriptId = sObj._id;
-
-    var rand =  Math.random().toString(32).replace('0.', '');
-    
-    var outputPath = 'plugin_data\\scripttask\\temp\\st' + rand + '.txt';
-    var scriptPath = 'plugin_data\\scripttask\\temp\\st' + rand + '.ps1';
-
-    var unlinkTempFiles = function() {
-        try {
-            log('removing output file ' + outputPath);
-            fs.unlinkSync(outputPath);
-        } catch (e) {
-            const message = e ? (e.message ? e.message : e.toString() ) : 'UNKNOWN';
-            log('WARNING: failed to unlink output file ' + outputPath + '; reason=' + message);
-        }
-
-        try {
-            log('removing script file ' + scriptPath);
-            fs.unlinkSync(scriptPath);
-        } catch(e) {
-            const message = e ? (e.message ? e.message : e.toString() ) : 'UNKNOWN';
-            log('WARNING: failed to unlink script file ' + scriptPath + '; reason=' + message);
-        }
-    };
-    
-    try {
-        log('writing script (scriptId=' + scriptId + ', jobId=' + jobId + ') to ' + scriptPath);
-        fs.writeFileSync(scriptPath, sObj.content);
-
-        var outstr = '', errstr = '';
-
-        log('creating powershell process for job id ' + jobId);
-        var child = child_process.execFile(process.env['windir'] + '\\system32\\WindowsPowerShell\\v1.0\\powershell.exe', ['-NoLogo', '-ExecutionPolicy', 'Bypass'] );
-
-        child.stderr.on('data', function (chunk) { errstr += chunk; });
-        child.stdout.on('data', function (chunk) { });
-
-        child.stdout.on('close', function() {
-            log('received stdout close from pid ' + child.pid);
-        });
-
-        runningJobPIDs[jObj.jobId] = child.pid;
-
-        log('powershell process (pid=' + child.pid + ') successfully created for job id ' + jobId);
-
-        child.on('error', function(err) {
-            log('ERROR: child process ' + child.pid + ' failed; reason=' + err.message);
-        });
-
-        child.on('exit', function(procRetVal, procRetSignal) {
-            log('powershell (pid=' + child.pid + ', jobId=' + jobId + ') exited with code ' + procRetVal + ', signal: ' + procRetSignal); 
-
-            if (errstr !== '') {
-                log('job completed with errors; stderr: ' + errstr);
-
-                finalizeJob(jObj, null, errstr);
-
-                unlinkTempFiles();
-
-                return;
-            }
-
-            if (procRetVal > 0) {
-                log('the powershell process temrinated unexpectedly');
-
-                finalizeJob(jObj, null, 'Process terminated unexpectedly.');
-
-                unlinkTempFiles();
-
-                return;
-            }
-
-            try {
-                log('reading script output file ' + outputPath);
-
-                outstr = fs.readFileSync(outputPath, 'utf8').toString();
-            } catch (e) {
-                const message = e ? (e.message ? e.message : e.toString() ) : 'UNKNOWN';
-                log('failed to read output file ' + outputPath + '; reason=' + message);
-
-                outstr = (procRetVal) ? 'Failure' : 'Success';
-            }
-
-            if (outstr) {
-                try {
-                    outstr = outstr.trim();
-                } catch (e) { }
-            } else {
-                outstr = (procRetVal) ? 'Failure' : 'Success';
-            }
-
-            log('job with id ' + jobId + ' produced ' + outstr.length + ' output characters(s)');
-
-            finalizeJob(jObj, outstr);
-
-            unlinkTempFiles();
-        });
-
-        var scriptInvocation = '.\\' + scriptPath + ' | Out-File ' + outputPath + ' -Encoding UTF8\r\n';
-        log('writing script invocation to powershell stdin; invocation=' + scriptInvocation);
-
-        child.stdin.write(scriptInvocation);
-        child.stdin.write('exit\r\n');
-        child.stdin.end();
-    } catch (e) { 
-        const message = e ? (e.message ? e.message : e.toString() ) : 'UNKNOWN';
-        log('failed to execute script via powershell; reason=' + message);
-
-        finalizeJob(jObj, null, e);
-
-        unlinkTempFiles();
-    }
-}
-
-function runPowerShellNonWin(sObj, jObj) {
-    var rand =  Math.random().toString(32).replace('0.', '');
-    
-    var path = '';
-    var pathTests = [
-        '/usr/local/mesh',
-        '/tmp',
-        '/usr/local/mesh_services/meshagent', 
-        '/var/tmp'
-    ];
-    pathTests.forEach(function(p) {
-        if (path == '' && fs.existsSync(p)) { path = p; }
-    });
-    log('Path chosen is: ' + path);
-    path = path + '/';
-    
-    var oName = 'st' + rand + '.txt';
-    var pName = 'st' + rand + '.ps1';
-    var pwshout = '', pwsherr = '', cancontinue = false;
-    try {
-        var childp = child_process.execFile('/bin/sh', ['sh']);
-        childp.stderr.on('data', function (chunk) { pwsherr += chunk; });
-        childp.stdout.on('data', function (chunk) { pwshout += chunk; });
-        childp.stdin.write('which pwsh' + '\n');
-        childp.stdin.write('exit\n');
-        childp.waitExit();
-    } catch (e) { finalizeJob(jObj, null, "Couldn't determine pwsh in env: " + e); }
-    if (pwsherr != '') {
-        finalizeJob(jObj, null, "PowerShell env determination error: " + pwsherr);
-        return;
-    }
-    if (pwshout.trim() != '') {
-        cancontinue = true;
-    }
-    if (cancontinue === false) { finalizeJob(jObj, null, "PowerShell is not installed"); return; }
-    try {
-        fs.writeFileSync(path + pName, '#!' + pwshout + '\n' + sObj.content.split('\r\n').join('\n').split('\r').join('\n'));
-        var outstr = '', errstr = '';
-        var child = child_process.execFile('/bin/sh', ['sh']);
-        child.stderr.on('data', function (chunk) { errstr += chunk; });
-        child.stdout.on('data', function (chunk) { });
-        runningJobPIDs[jObj.jobId] = child.pid;
-        
-        child.stdin.write('cd ' + path + '\n');                                                                                                                                                
-        child.stdin.write('chmod a+x ' + pName + '\n');                                                                                                                                        
-        child.stdin.write('./' + pName + ' > ' + oName + '\n');
-        child.on('exit', function(procRetVal, procRetSignal) {
-            if (errstr != '') {
-                finalizeJob(jObj, null, errstr);
-                try {
-                    fs.unlinkSync(path + oName);
-                    fs.unlinkSync(path + pName);
-                } catch (e) { log('Could not unlink files, error was: ' + e + ' for path ' + path); }
-                return;
-            }
-            if (procRetVal == 1) {
-                finalizeJob(jObj, null, 'Process terminated unexpectedly.');
-                try {
-                    fs.unlinkSync(path + oName);
-                    fs.unlinkSync(path + pName);
-                } catch (e) { log('Could not unlink files1, error was: ' + e + ' for path ' + path); }
-                return;
-            }
-            try { 
-                outstr = fs.readFileSync(path + oName, 'utf8').toString();
-            } catch (e) { outstr = (procRetVal) ? 'Failure' : 'Success'; }
-            if (outstr) {
-                //outstr = outstr.replace(/[^\x20-\x7E]/g, ''); 
-                try { outstr = outstr.trim(); } catch (e) { }
-            } else {
-                outstr = (procRetVal) ? 'Failure' : 'Success';
-            }
-            log('Output is: ' + outstr);
-            finalizeJob(jObj, outstr);
-            try {
-                fs.unlinkSync(path + oName);
-                fs.unlinkSync(path + pName);
-            } catch (e) { log('Could not unlink files2, error was: ' + e + ' for path ' + path); }
-        });
-        child.stdin.write('exit\n');
-    } catch (e) { 
-        log('Error block was (PowerShellNonWin): ' + e);
-        finalizeJob(jObj, null, e);
-    }
-}
-
 function runBat(sObj, jObj) {
-    if (process.platform != 'win32') {
-        finalizeJob(jObj, null, 'Platform not supported.');
-        return;
-    }
-
-    var rand =  Math.random().toString(32).replace('0.', '');
-    var oName = 'st' + rand + '.txt';
-    var pName = 'st' + rand + '.bat';
-    try {
-        fs.writeFileSync(pName, sObj.content);
-        var outstr = '', errstr = '';
-        var child = child_process.execFile(process.env['windir'] + '\\system32\\cmd.exe');
-        child.stderr.on('data', function (chunk) { errstr += chunk; });
-        child.stdout.on('data', function (chunk) { });
-        runningJobPIDs[jObj.jobId] = child.pid;
-        child.stdin.write(pName + ' > ' + oName + '\r\n');
-        child.stdin.write('exit\r\n');
-
-        child.on('exit', function(procRetVal, procRetSignal) {
-            if (errstr != '') {
-                try { 
-                    fs.unlinkSync(oName);
-                    fs.unlinkSync(pName);
-                } catch (e) { log('Could not unlink files, error was: ' + e); }
-                finalizeJob(jObj, null, errstr);
-                return;
-            }
-            if (procRetVal == 1) {
-                try { 
-                    fs.unlinkSync(oName);
-                    fs.unlinkSync(pName);
-                } catch (e) { log('Could not unlink files, error was: ' + e); }
-                finalizeJob(jObj, null, 'Process terminated unexpectedly.');
-                return;
-            }
-            try { 
-                outstr = fs.readFileSync(oName, 'utf8').toString();
-            } catch (e) { outstr = (procRetVal) ? 'Failure' : 'Success'; }
-            if (outstr) {
-                //outstr = outstr.replace(/[^\x20-\x7E]/g, ''); 
-                try { outstr = outstr.trim(); } catch (e) { }
-            } else {
-                outstr = (procRetVal) ? 'Failure' : 'Success';
-            }
-            log('Output is: ' + outstr);
-            try {
-                fs.unlinkSync(oName);
-                fs.unlinkSync(pName);
-            } catch (e) { log('Could not unlink files, error was: ' + e); }
-            finalizeJob(jObj, outstr);
-        });
-    } catch (e) { 
-        log('Error block was (BAT): ' + e);
-        finalizeJob(jObj, null, e);
-    }
+    finalizeJob(jObj, null, 'Platform not supported.');
 }
 
 function runBash(sObj, jObj) {
-    if (process.platform == 'win32') {
-        finalizeJob(jObj, null, 'Platform not supported.');
-        return;
-    }
-    //dbg('proc is ' + JSON.stringify(process));
-    var path = '';
-    var pathTests = [
-        '/usr/local/mesh',
-        '/tmp',
-        '/usr/local/mesh_services/meshagent', 
-        '/var/tmp'
-    ];
-    pathTests.forEach(function(p) {
-        if (path == '' && fs.existsSync(p)) { path = p; }
-    });
-    log('Path chosen is: ' + path);
-    path = path + '/';
-    //var child = require('child_process');
-    //child.execFile(process.env['windir'] + '\\system32\\cmd.exe', ['/c', 'RunDll32.exe user32.dll,LockWorkStation'], { type: 1 });
-    
-    var rand =  Math.random().toString(32).replace('0.', '');
-    var oName = 'st' + rand + '.txt';
-    var pName = 'st' + rand + '.sh';
-    try {
-        fs.writeFileSync(path + pName, sObj.content);
-        var outstr = '', errstr = '';
-        var child = child_process.execFile('/bin/sh', ['sh']);
-        child.stderr.on('data', function (chunk) { errstr += chunk; });
-        child.stdout.on('data', function (chunk) { });
-        runningJobPIDs[jObj.jobId] = child.pid;
-        child.stdin.write('cd ' + path + '\n');
-        child.stdin.write('chmod a+x ' + pName + '\n');
-        child.stdin.write('./' + pName + ' > ' + oName + '\n');
-        child.stdin.write('exit\n');
-        
-        child.on('exit', function(procRetVal, procRetSignal) {
-            if (errstr != '') {
-                try {
-                    fs.unlinkSync(path + oName);
-                    fs.unlinkSync(path + pName);
-                } catch (e) { log('Could not unlink files, error was: ' + e + ' for path ' + path); }
-                finalizeJob(jObj, null, errstr);
-                return;
-            }
-            if (procRetVal == 1) {
-                try {
-                    fs.unlinkSync(path + oName);
-                    fs.unlinkSync(path + pName);
-                } catch (e) { log('Could not unlink files1, error was: ' + e + ' for path ' + path); }
-                finalizeJob(jObj, null, 'Process terminated unexpectedly.');
-                return;
-            }
-            try { 
-                outstr = fs.readFileSync(path + oName, 'utf8').toString();
-            } catch (e) { outstr = (procRetVal) ? 'Failure' : 'Success'; }
-            if (outstr) {
-                //outstr = outstr.replace(/[^\x20-\x7E]/g, ''); 
-                try { outstr = outstr.trim(); } catch (e) { }
-            } else {
-                outstr = (procRetVal) ? 'Failure' : 'Success';
-            }
-            log('Output is: ' + outstr);
-            try {
-                fs.unlinkSync(path + oName);
-                fs.unlinkSync(path + pName);
-            } catch (e) { log('Could not unlink files2, error was: ' + e + ' for path ' + path); }
-            finalizeJob(jObj, outstr);
-        });
-    } catch (e) { 
-        log('Error block was (bash): ' + e);
-        finalizeJob(jObj, null, e);
-    }
+    finalizeJob(jObj, null, 'Platform not supported.');
 }
 
-function jobIsRunning(jObj) {
-    return runningJobs.indexOf(jObj.jobId) > -1;
-}
-
+/**
+ * 
+ * @param {*} sObj 
+ * @param {Job} jObj 
+ */
 function runScript(sObj, jObj) {
     log('executing script (scriptId=' + sObj._id + ', jobId=' + jObj.jobId + ')');
 
     // get current processes and clean running jobs if they are no longer running (computer fell asleep, user caused process to stop, etc.)
-    if (process.platform != 'linux' && runningJobs.length > 0) { // linux throws errors here in the meshagent for some reason
-        log('updating internal job ledger; there are currently ' + runningJobs.length  + ' job(s) running');
+    // if (process.platform != 'linux' && runningJobs.length > 0) { // linux throws errors here in the meshagent for some reason
+    //     log('updating internal job ledger; there are currently ' + runningJobs.length  + ' job(s) running');
 
-        require('process-manager').getProcesses(function (plist) {
-            if (runningJobs.length > 0) {
-                runningJobs.forEach(function (jobId, idx) {
-                    log('checking for running job ' + jobId + ' with PID ' + runningJobPIDs[jobId]);
+    //     require('process-manager').getProcesses(function (plist) {
+    //         if (runningJobs.length > 0) {
+    //             runningJobs.forEach(function (jobId, idx) {
+    //                 log('checking for running job ' + jobId + ' with PID ' + runningJobPIDs[jobId]);
 
-                    if (typeof plist[runningJobPIDs[jobId]] === 'undefined' || typeof plist[runningJobPIDs[jobId]].cmd !== 'string') {
-                        log('found orphaned job ' + jobId + '; untracking');
+    //                 if (typeof plist[runningJobPIDs[jobId]] === 'undefined' || typeof plist[runningJobPIDs[jobId]].cmd !== 'string') {
+    //                     log('found orphaned job ' + jobId + '; untracking');
 
-                        delete runningJobPIDs[jobId];
-                        runningJobs.remove(runningJobs.indexOf(idx));
-                    }
-                });
-            }
-        });
-    }
+    //                     delete runningJobPIDs[jobId];
+    //                     runningJobs.remove(runningJobs.indexOf(idx));
+    //                 }
+    //             });
+    //         }
+    //     });
+    // }
 
-    if (jobIsRunning(jObj)) {
-        log('WARNING: job [' + jObj.jobId + '] is already running; skipping execution');
-        return;
-    }
+    // if (jobIsRunning(jObj)) {
+    //     log('WARNING: job [' + jObj.jobId + '] is already running; skipping execution');
+    //     return;
+    // }
 
     if (null !== jObj.replaceVars) {
         log('replacing variables in script');
@@ -816,9 +670,6 @@ function runScript(sObj, jObj) {
 
         sObj.content = sObj.content.replace(new RegExp('#(.*?)#', 'g'), 'VAR_NOT_FOUND');
     }
-
-    log('tracking job ' + jObj.jobId);
-    runningJobs.push(jObj.jobId);
 
     switch (sObj.filetype) {
         case 'ps1':
@@ -870,11 +721,6 @@ function clearCache() {
             db.Delete(k);
         }
     });
-}
-
-function sendConsoleText(text, sessionid) {
-    if (typeof text == 'object') { text = JSON.stringify(text); }
-    mesh.SendCommand({ "action": "msg", "type": "console", "value": text, "sessionid": sessionid });
 }
 
 module.exports = { consoleaction : consoleaction };
