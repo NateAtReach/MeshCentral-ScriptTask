@@ -548,7 +548,7 @@ function runPowerShell2(sObj, jObj) {
 
     try {
         log('writing script (scriptId=' + scriptId + ', jobId=' + jobId + ') to ' + scriptPath);
-        fs.writeFileSync(scriptPath, "$ProgressPreference = 'SilentlyContinue'\r\n$WarningPreference = 'SilentlyContinue'\r\n" + sObj.content);
+        fs.writeFileSync(scriptPath, sObj.content);
 
         var outstr = '', errstr = '';
 
@@ -557,7 +557,15 @@ function runPowerShell2(sObj, jObj) {
         var powershellPath = process.env['windir'] + '\\system32\\WindowsPowerShell\\v1.0\\powershell.exe';
 
         log('creating powershell process for job id ' + jobId + '(powershellPath=' + powershellPath + ',invocationParams=' + JSON.stringify(invocationParams) + ')');
-        var child = child_process.execFile(powershellPath, invocationParams);
+        var child = child_process.execFile(
+            powershellPath,
+            invocationParams,
+            {
+                env: {
+                    ProgressPreference: 'SilentlyContinue'
+                }
+            }
+        );
 
         jObj.scriptPid = child.pid;
 
