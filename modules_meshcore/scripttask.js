@@ -548,12 +548,12 @@ function runPowerShell2(sObj, jObj) {
 
     try {
         log('writing script (scriptId=' + scriptId + ', jobId=' + jobId + ') to ' + scriptPath);
-        fs.writeFileSync(scriptPath, "$ProgressPreference = 'SilentlyContinue'\r\n" + sObj.content);
+        fs.writeFileSync(scriptPath, "$ProgressPreference = 'SilentlyContinue'\r\n$WarningPreference = 'SilentlyContinue'\r\n" + sObj.content);
 
         var outstr = '', errstr = '';
 
         var buffer = strToPowershellEncodedCommand('.\\' + scriptPath + ' | Out-File ' + outputPath + ' -Encoding UTF8');
-        var invocationParams = ['-NoProfile', '-NoLogo', '-ExecutionPolicy', 'Bypass', '-EncodedCommand', buffer.toString('base64')];
+        var invocationParams = ['-NonInteractive', '-NoProfile', '-NoLogo', '-ExecutionPolicy', 'Bypass', '-EncodedCommand', buffer.toString('base64')];
         var powershellPath = process.env['windir'] + '\\system32\\WindowsPowerShell\\v1.0\\powershell.exe';
 
         log('creating powershell process for job id ' + jobId + '(powershellPath=' + powershellPath + ',invocationParams=' + JSON.stringify(invocationParams) + ')');
