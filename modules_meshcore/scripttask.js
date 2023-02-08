@@ -198,6 +198,8 @@ function pruneJobQueue() {
     while(typeof firstJob !== 'undefined') {
         if((typeof firstJob.utcCompletedAt === 'number' && firstJob.utcCompletedAt <= fifteenMinutesAgo) || (typeof firstJob.utcStartedAt === 'number' && firstJob.utcStartedAt <= twentyFiveMinutesAgo)) {
             jobQueue.shift();
+        } else {
+            break;
         }
 
         firstJob = jobQueue.length > 0 ? jobQueue[0] : undefined;
