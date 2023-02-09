@@ -319,7 +319,7 @@ function startJobQueueHealthCheck() {
 
             if(result.pending > 0 && result.running < 1) {
                 log('WARNING: detected stalled job execution loop; restarting queue processor');
-                runNextJob();
+                runNextJobOnNextTick();
             } else {
                 log('job queue processor is healthy');
             }
@@ -352,6 +352,12 @@ function onDownloadTimeout(job) {
 
     //finalize the job
     finalizeJob(job, undefined, "timed out waiting for script to download");
+}
+
+function runNextJobOnNextTick() {
+    setTimeout(function() {
+        runNextJob();
+    }, 0);
 }
 
 /**
@@ -477,17 +483,17 @@ function consoleaction(args, rights, sessionid, parent) {
                 "action": "plugin", 
                 "plugin": "scripttask",
                 "pluginaction": "updateJobState",
-                "jobId": args.jobId,
-                "scriptId": args.scriptId,
+                "jobId": jObj.jobId,
+                "scriptId": jObj.scriptId,
                 "newState": JobState.PENDING,
-                "sessionid": args.sessionId,
+                "sessionid": jObj.sessionId,
                 "tag": "console"
             });
 
             if(enqueueJob(jObj)) {
                 log('enqueued job (jobId=' + jObj.jobId + ')');
 
-                runNextJob();
+                runNextJobOnNextTick();
             } else {
                 log('failed to enqueue job (jobId=' + jObj.jobId + ')');
             }
@@ -671,7 +677,7 @@ function finalizeJob(job, retVal, errVal) {
         "tag": "console"
     });
 
-    runNextJob();
+    runNextJobOnNextTick();
 }
 
 function unlinkTempFiles(files) {

@@ -548,10 +548,8 @@ module.exports.scripttask = function (parent) {
     obj.serveraction = function(command, myparent, grandparent) {
         switch (command.pluginaction) {
             case 'updateJobState':
-                //todo: update job state in database, update front-end
                 obj.db.update(command.jobId, { state: command.newState })
                     .then(() => {
-                        //todo: update front end
                         obj.updateFrontEnd({
                             scriptId: command.scriptId,
                             nodeId: myparent.dbNodeKey
@@ -795,7 +793,7 @@ module.exports.scripttask = function (parent) {
                 //obj.debug('ScriptTask', 'jobComplete Triggered', JSON.stringify(command));
                 var jobId = command.jobId, retVal = command.retVal, errVal = command.errVal, dispatchTime = command.dispatchTime;
                 var completeTime = Math.floor(new Date() / 1000);
-                
+
                 obj.db.update(
                     jobId,
                     {
