@@ -455,6 +455,17 @@ function consoleaction(args, rights, sessionid, parent) {
             if(typeof existingJob !== 'undefined') {
                 log('jobId ' + existingJob.jobId + ' already exists in state ' + existingJob.state + '; ignoring trigger');
 
+                mesh.SendCommand({
+                    "action": "plugin", 
+                    "plugin": "scripttask",
+                    "pluginaction": "updateJobState",
+                    "jobId": args.jobId,
+                    "scriptId": args.scriptId,
+                    "newState": JobState.PENDING,
+                    "sessionid": args.sessionId,
+                    "tag": "console"
+                });
+
                 break;
             }
 
