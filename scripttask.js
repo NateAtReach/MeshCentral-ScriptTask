@@ -136,16 +136,19 @@ module.exports.scripttask = function (parent) {
                         state: jobState.DISPATCHED
                     };
                     
-                    //todo: remove suppressing try/catch
                     try { 
-                        obj.meshServer.webserver.wsagents[job.node].send(JSON.stringify(jObj));
+                        var dispatchToNode = () => {
+                            obj.meshServer.webserver.wsagents[job.node].send(JSON.stringify(jObj));
+                        };
+
                         obj.db.update(
                             job._id,
                             {
                                 dispatchTime: dispatchTime,
                                 state: jobState.DISPATCHED,
                             }
-                        );
+                        ).then(dispatchToNode)
+                        .catch(dispatchToNode);
                     } catch (e) { }
                 })
                 .catch(e => console.log('PLUGIN: ScriptTask: Could not dispatch job.', e));
