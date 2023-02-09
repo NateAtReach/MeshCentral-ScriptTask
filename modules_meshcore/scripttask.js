@@ -324,7 +324,13 @@ function runNextJob() {
             "tag": "console"
         });
 
-        nextJob.downloadStallTimer = setTimeout(onDownloadTimeout, 30000, nextJob, sObj.contentHash);
+        try {
+            nextJob.downloadStallTimer = setTimeout(function() {
+                onDownloadTimeout(nextJob);
+            }, 30000);
+        } catch(e) {
+            log('WARNING: failed to set download stall timer for jobId=' + nextJob.jobId);
+        }
 
         pendingDownload.push(nextJob);
 
