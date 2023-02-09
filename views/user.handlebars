@@ -250,6 +250,19 @@
 </div>
 </body>
 <script type="text/javascript">
+var JobState = {
+    SCHEDULED: 1,
+    DISPATCHED: 2,
+    PENDING: 3,
+    RUNNING: 4,
+    COMPLETE: 5,
+    1: 'Scheduled',
+    2: 'Dispatched',
+    3: 'Pending',
+    4: 'Running',
+    5: 'Complete'
+};
+
 var scriptTree = {{{scriptTree}}};
 var elementDragged = false;
 var dragCounter = 0;
@@ -565,10 +578,16 @@ function redrawScriptTree() {
       nh.timeStr = d.toLocaleString();
       if (nh.errorVal != null) { nh.returnTxt = nh.errorVal; } else { nh.returnTxt = nh.returnVal; }
       nh.statusTxt = 'Queued';
-      if (nh.dispatchTime != null) nh.statusTxt = 'Running';
-      if (nh.errorVal != null) nh.statusTxt = 'Error';
-      if (nh.returnVal != null) nh.statusTxt = 'Completed';
-      if (nh.dontQueueUntil > nowTime) nh.statusTxt = 'Scheduled'; 
+
+      if(typeof nh.state !== 'undefined') {
+        nh.statusTxt = JobState[nh.state];
+      } else {
+        if (nh.dispatchTime != null) nh.statusTxt = 'Running';
+        if (nh.errorVal != null) nh.statusTxt = 'Error';
+        if (nh.returnVal != null) nh.statusTxt = 'Completed';
+        if (nh.dontQueueUntil > nowTime) nh.statusTxt = 'Scheduled';
+      }
+      
       if (nh.returnTxt == null) nh.returnTxt = '&nbsp;';
       if (nh.statusTxt == 'Completed') {
           nh.statusTxt = '<span title="Completed ' + secondsToHms((nh.completeTime - nh.dispatchTime)) + '">' + nh.statusTxt + '</span>';
