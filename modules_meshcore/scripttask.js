@@ -30,6 +30,7 @@ var JobState = {
  * @property {number|undefined} utcCompletedAt - UTC millis of when the job completed
  * @property {string|undefined} randomName - random string used to save script and output to disk
  * @property {number|undefined} abortTimer - setTimeout handle used to abort the running script
+ * @property {number|undefined} downloadStallTimer - setTimeout to handle download stall
  */
 
 var mesh;
@@ -48,6 +49,10 @@ var options = {
     },
     retainTempFiles: {
         value: 'off',
+        options: [ 'on', 'off' ]
+    },
+    swallowNextDownload: {
+        valie: 'off',
         options: [ 'on', 'off' ]
     }
 };
@@ -247,6 +252,30 @@ function getJobCount(states) {
     return count;
 }
 
+/**
+ * Callback executed if a download takes too long to be received
+ * @param {Job} job 
+ */
+function onDownloadTimeout(job) {
+    log('WARNING: timeout occured (jobId=' + job.jobId + ') while waiting for script to download');
+
+    //remove from pending downloads
+    pendingDownload.forEach(
+        /**
+         * @param {Job} pd 
+         * @param {*} k 
+         */
+        function(pd, k) {
+            if (pd.jobId === job.jobId) {
+                pendingDownload.remove(k);
+            }
+        }
+    );
+
+    //finalize the job
+    finalizeJob(job, undefined, "timed out waiting for script to download");
+}
+
 function runNextJob() {
     pruneJobQueue();
 
@@ -295,6 +324,8 @@ function runNextJob() {
             "tag": "console"
         });
 
+        nextJob.downloadStallTimer = setTimeout(onDownloadTimeout, 30000, nextJob, sObj.contentHash);
+
         pendingDownload.push(nextJob);
 
         log('there are now ' + pendingDownload.length + ' pending download(s)');
@@ -326,6 +357,8 @@ function consoleaction(args, rights, sessionid, parent) {
     switch (fnname) {
         case 'triggerJob':
         {
+            pruneJobQueue();
+
             var existingJob = getJobById(args.jobId);
             if(typeof existingJob !== 'undefined') {
                 log('jobId ' + existingJob.jobId + ' already exists in state ' + existingJob.state + '; ignoring trigger');
@@ -353,7 +386,7 @@ function consoleaction(args, rights, sessionid, parent) {
             if(enqueueJob(jObj)) {
                 log('enqueued job (jobId=' + jObj.jobId + ')');
 
-                runNextJob();
+                setTimeout(runNextJob, 100);
             } else {
                 log('failed to enqueue job (jobId=' + jObj.jobId + ')');
             }
@@ -362,6 +395,14 @@ function consoleaction(args, rights, sessionid, parent) {
         }
         case 'cacheScript':
         {
+            if(options.swallowNextDownload === 'on') {
+                options.swallowNextDownload = 'off';
+
+                log('swallowingNextDownload is "on". ignoring cacheScript request for scriptId=' + sObj._id);
+                
+                return;
+            }
+
             var sObj = args.script;
 
             log('caching script with id ' + sObj._id);
@@ -372,19 +413,31 @@ function consoleaction(args, rights, sessionid, parent) {
             if (pendingDownload.length > 0) {
                 log('searching for pending script executions depending on script with id' + sObj._id);
 
-                pendingDownload.forEach(function(pd, k) { 
-                    if (pd.scriptId === sObj._id && pd.scriptHash === sObj.contentHash) {
-                        if (setRun.indexOf(pd) === -1) {
-                            log('resuming pending execution (jobId=' + pd.jobId + ')');
+                pendingDownload.forEach(
+                    /**
+                     * 
+                     * @param {Job} pd 
+                     * @param {*} k 
+                     */
+                    function(pd, k) { 
+                        if (pd.scriptId === sObj._id && pd.scriptHash === sObj.contentHash) {
+                            if (setRun.indexOf(pd) === -1) {
+                                log('resuming pending execution (jobId=' + pd.jobId + ')');
 
-                            runScript(sObj, pd);
+                                if(typeof pd.downloadStallTimer !== 'undefined') {
+                                    clearTimeout(pd.downloadStallTimer);
+                                    pd.downloadStallTimer = undefined;
+                                }
 
-                            setRun.push(pd);
+                                runScript(sObj, pd);
+
+                                setRun.push(pd);
+                            }
+
+                            pendingDownload.remove(k);
                         }
-
-                        pendingDownload.remove(k);
                     }
-                });
+                );
             }
 
             break;
@@ -503,7 +556,7 @@ function finalizeJob(job, retVal, errVal) {
         "tag": "console"
     });
 
-    runNextJob();
+    setTimeout(runNextJob, 100);
 }
 
 function unlinkTempFiles(files) {
