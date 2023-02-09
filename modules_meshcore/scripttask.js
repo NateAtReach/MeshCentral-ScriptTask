@@ -268,23 +268,28 @@ function jobQueueReduce(func, initialValue) {
 //set an interval to check for stalled run job loop. if we have > 0 pending and < 1 running, we
 //should start the loop again.
 setInterval(function() {
-    pruneJobQueue();
+    try {
+        pruneJobQueue();
 
-    var result = jobQueueReduce(
-        function(memo, job) {
-            return {
-                pending: memo.pending + (job.state === JobState.PENDING ? 1 : 0),
-                running: memo.running + (job.state === JobState.RUNNING ? 1 : 0)
-            };
-        },
-        { running: 0, pending: 0 }
-    );
+        var result = jobQueueReduce(
+            function(memo, job) {
+                return {
+                    pending: memo.pending + (job.state === JobState.PENDING ? 1 : 0),
+                    running: memo.running + (job.state === JobState.RUNNING ? 1 : 0)
+                };
+            },
+            { running: 0, pending: 0 }
+        );
 
-    if(result.pending > 0 && result.running < 1) {
-        log('WARNING: detected stalled job execution loop; restarting queue processor');
-        runNextJob();
-    } else {
-        log('job queue processor is healthy');
+        if(result.pending > 0 && result.running < 1) {
+            log('WARNING: detected stalled job execution loop; restarting queue processor');
+            runNextJob();
+        } else {
+            log('job queue processor is healthy');
+        }
+    } catch(e) {
+        var message = e ? (e.message ? e.message : e.toString() ) : 'UNKNOWN';
+        log('ERROR: failed to check job queue processor health; reason=' + message);
     }
 }, 60000);
 
