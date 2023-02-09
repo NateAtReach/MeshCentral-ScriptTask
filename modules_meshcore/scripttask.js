@@ -401,6 +401,8 @@ function consoleaction(args, rights, sessionid, parent) {
         }
         case 'cacheScript':
         {
+            var sObj = args.script;
+            
             if(options.swallowNextDownload.value === 'on') {
                 options.swallowNextDownload.value = 'off';
 
@@ -408,8 +410,6 @@ function consoleaction(args, rights, sessionid, parent) {
 
                 return;
             }
-
-            var sObj = args.script;
 
             log('caching script with id ' + sObj._id);
 
