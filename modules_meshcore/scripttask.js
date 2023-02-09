@@ -357,7 +357,7 @@ function onDownloadTimeout(job) {
 function runNextJobOnNextTick() {
     setTimeout(function() {
         runNextJob();
-    }, 0);
+    });
 }
 
 /**
