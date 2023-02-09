@@ -52,7 +52,7 @@ var options = {
         options: [ 'on', 'off' ]
     },
     swallowNextDownload: {
-        valie: 'off',
+        value: 'off',
         options: [ 'on', 'off' ]
     }
 };
@@ -401,8 +401,8 @@ function consoleaction(args, rights, sessionid, parent) {
         }
         case 'cacheScript':
         {
-            if(options.swallowNextDownload === 'on') {
-                options.swallowNextDownload = 'off';
+            if(options.swallowNextDownload.value === 'on') {
+                options.swallowNextDownload.value = 'off';
 
                 log('swallowingNextDownload is "on". ignoring cacheScript request for scriptId=' + sObj._id);
 
