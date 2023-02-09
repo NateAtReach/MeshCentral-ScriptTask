@@ -357,6 +357,8 @@ function consoleaction(args, rights, sessionid, parent) {
     switch (fnname) {
         case 'triggerJob':
         {
+            log('triggerJob (jobId=' + args.jobId + ', scriptId=' + args.scriptId + ', scriptHash=' + args.scriptHash + ', dispatchTime=' + args.dispatchTime + ')');
+
             pruneJobQueue();
 
             var existingJob = getJobById(args.jobId);
@@ -381,12 +383,10 @@ function consoleaction(args, rights, sessionid, parent) {
                 randomName: Math.random().toString(32).replace('0.', '')
             };
 
-            log('triggerJob (jobId=' + args.jobId + ', scriptId=' + args.scriptId + ', scriptHash=' + args.scriptHash + ', dispatchTime=' + args.dispatchTime + ')');
-
             if(enqueueJob(jObj)) {
                 log('enqueued job (jobId=' + jObj.jobId + ')');
 
-                setTimeout(runNextJob, 100);
+                runNextJob();
             } else {
                 log('failed to enqueue job (jobId=' + jObj.jobId + ')');
             }
@@ -399,7 +399,7 @@ function consoleaction(args, rights, sessionid, parent) {
                 options.swallowNextDownload = 'off';
 
                 log('swallowingNextDownload is "on". ignoring cacheScript request for scriptId=' + sObj._id);
-                
+
                 return;
             }
 
@@ -556,7 +556,7 @@ function finalizeJob(job, retVal, errVal) {
         "tag": "console"
     });
 
-    setTimeout(runNextJob, 100);
+    runNextJob();
 }
 
 function unlinkTempFiles(files) {
