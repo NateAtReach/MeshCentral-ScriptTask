@@ -7,6 +7,20 @@
 
 "use strict";
 
+const jobState = require('./jobState.js');
+
+/**
+ * @typedef {import('./db.js').Job} Job
+ */
+
+/**
+ * @typedef {import('./db.js').JobSchedule} JobSchedule
+ */
+
+/**
+ * @typedef {import('./db.js').Script} Script
+ */
+
 module.exports.scripttask = function (parent) {
     var obj = {};
     obj.parent = parent;
@@ -25,10 +39,12 @@ module.exports.scripttask = function (parent) {
     
     obj.malix_triggerOption = function(selectElem) {
         selectElem.options.add(new Option("ScriptTask - Run Script", "scripttask_runscript"));
-    }
+    };
+
     obj.malix_triggerFields_scripttask_runscript = function() {
         
-    }
+    };
+
     obj.resetQueueTimer = function() {
         clearTimeout(obj.intervalTimer);
         obj.intervalTimer = setInterval(obj.queueRun, 1 * 60 * 1000); // every minute
@@ -45,15 +61,24 @@ module.exports.scripttask = function (parent) {
             tabTitle: 'ScriptTask',
             tabId: 'pluginScriptTask'
         });
+
         QA('pluginScriptTask', '<iframe id="pluginIframeScriptTask" style="width: 100%; height: 800px;" scrolling="no" frameBorder=0 src="/pluginadmin.ashx?pin=scripttask&user=1" />');
     };
+
     // may not be needed, saving for later. Can be called to resize iFrame
     obj.resizeContent = function() {
         var iFrame = document.getElementById('pluginIframeScriptTask');
         var newHeight = 800;
         var sHeight = iFrame.contentWindow.document.body.scrollHeight;
-        if (sHeight > newHeight) newHeight = sHeight;
-        if (newHeight > 1600) newHeight = 1600;
+
+        if (sHeight > newHeight) {
+            newHeight = sHeight;
+        }
+
+        if (newHeight > 1600) {
+            newHeight = 1600;
+        }
+
         iFrame.style.height = newHeight + 'px';
     };
     
@@ -98,6 +123,7 @@ module.exports.scripttask = function (parent) {
                         //console.log('RV IS', replaceVars);
                     }
                     var dispatchTime = Math.floor(new Date() / 1000);
+                    /** @type Job */
                     var jObj = { 
                         action: 'plugin', 
                         plugin: 'scripttask', 
@@ -106,12 +132,20 @@ module.exports.scripttask = function (parent) {
                         scriptId: job.scriptId,
                         replaceVars: replaceVars,
                         scriptHash: script.contentHash,
-                        dispatchTime: dispatchTime
+                        dispatchTime: dispatchTime,
+                        state: jobState.DISPATCHED
                     };
-                    //obj.debug('ScriptTask', 'Sending job to agent');
+                    
+                    //todo: remove suppressing try/catch
                     try { 
                         obj.meshServer.webserver.wsagents[job.node].send(JSON.stringify(jObj));
-                        obj.db.update(job._id, { dispatchTime: dispatchTime });
+                        obj.db.update(
+                            job._id,
+                            {
+                                dispatchTime: dispatchTime,
+                                state: jobState.DISPATCHED,
+                            }
+                        );
                     } catch (e) { }
                 })
                 .catch(e => console.log('PLUGIN: ScriptTask: Could not dispatch job.', e));
@@ -135,47 +169,84 @@ module.exports.scripttask = function (parent) {
         var id = req.query.dl;
         obj.db.get(id)
         .then(found => {
-          if (found.length != 1) { res.sendStatus(401); return; }
-          var file = found[0];
-          res.setHeader('Content-disposition', 'attachment; filename=' + file.name);
-          res.setHeader('Content-type', 'text/plain');
-          //var fs = require('fs');
-          res.send(file.content);
+            if (found.length != 1) {
+                res.sendStatus(401); return;
+            }
+
+            var file = found[0];
+            res.setHeader('Content-disposition', 'attachment; filename=' + file.name);
+            res.setHeader('Content-type', 'text/plain');
+
+            res.send(file.content);
         });
     };
     
     obj.updateFrontEnd = async function(ids){
         if (ids.scriptId != null) {
+            //get script history request
+
             var scriptHistory = null;
             obj.db.getJobScriptHistory(ids.scriptId)
-            .then((sh) => {
-                scriptHistory = sh;
-                return obj.db.getJobSchedulesForScript(ids.scriptId);
-            })
-            .then((scriptSchedule) => {
-                var targets = ['*', 'server-users'];
-                obj.meshServer.DispatchEvent(targets, obj, { nolog: true, action: 'plugin', plugin: 'scripttask', pluginaction: 'historyData', scriptId: ids.scriptId, nodeId: null, scriptHistory: scriptHistory, nodeHistory: null, scriptSchedule: scriptSchedule });
-            });
+                .then((/** @type Array.<Job> */ sh) => {
+                    scriptHistory = sh;
+                    return obj.db.getJobSchedulesForScript(ids.scriptId);
+                })
+                .then((/** @type Array.<JobSchedule> */ scriptSchedule) => {
+                    var targets = ['*', 'server-users'];
+                    obj.meshServer.DispatchEvent(
+                        targets,
+                        obj,
+                        {
+                            nolog: true,
+                            action: 'plugin',
+                            plugin: 'scripttask',
+                            pluginaction: 'historyData',
+                            scriptId: ids.scriptId,
+                            nodeId: null,
+                            scriptHistory: scriptHistory,
+                            nodeHistory: null,
+                            scriptSchedule: scriptSchedule
+                        });
+                });
         }
+
         if (ids.nodeId != null) {
             var nodeHistory = null;
-            obj.db.getJobNodeHistory(ids.nodeId)
-            .then((nh) => {
-                nodeHistory = nh;
-                return obj.db.getJobSchedulesForNode(ids.nodeId);
-            })
-            .then((nodeSchedule) => {
-                var targets = ['*', 'server-users'];
-                obj.meshServer.DispatchEvent(targets, obj, { nolog: true, action: 'plugin', plugin: 'scripttask', pluginaction: 'historyData', scriptId: null, nodeId: ids.nodeId, scriptHistory: null, nodeHistory: nodeHistory, nodeSchedule: nodeSchedule });
-            });
+            obj.db
+                .getJobNodeHistory(ids.nodeId)
+                .then((/** @type Array.<Job> */ nh) => {
+                    nodeHistory = nh;
+                    return obj.db.getJobSchedulesForNode(ids.nodeId);
+                })
+                .then((/** @type Array.<JobSchedule> */ nodeSchedule) => {
+                    var targets = ['*', 'server-users'];
+                    obj.meshServer.DispatchEvent(
+                        targets,
+                        obj,
+                        {
+                            nolog: true, 
+                            action: 'plugin', 
+                            plugin: 'scripttask', 
+                            pluginaction: 'historyData', 
+                            scriptId: null, 
+                            nodeId: ids.nodeId, 
+                            scriptHistory: null, 
+                            nodeHistory: nodeHistory, 
+                            nodeSchedule: nodeSchedule
+                        }
+                    );
+                });
         }
+
         if (ids.tree === true) {
-            obj.db.getScriptTree()
-            .then((tree) => {
-                var targets = ['*', 'server-users'];
-                obj.meshServer.DispatchEvent(targets, obj, { nolog: true, action: 'plugin', plugin: 'scripttask', pluginaction: 'newScriptTree', tree: tree });
-            });
+            obj.db
+                .getScriptTree()
+                .then((tree) => {
+                    var targets = ['*', 'server-users'];
+                    obj.meshServer.DispatchEvent(targets, obj, { nolog: true, action: 'plugin', plugin: 'scripttask', pluginaction: 'newScriptTree', tree: tree });
+                });
         }
+
         if (ids.variables === true) {
             obj.db.getVariables()
             .then((vars) => {
@@ -240,8 +311,13 @@ module.exports.scripttask = function (parent) {
     };
     
     obj.historyData = function (message) {
-        if (typeof pluginHandler.scripttask.loadHistory == 'function') pluginHandler.scripttask.loadHistory(message);
-        if (typeof pluginHandler.scripttask.loadSchedule == 'function') pluginHandler.scripttask.loadSchedule(message);
+        if (typeof pluginHandler.scripttask.loadHistory == 'function') {
+            pluginHandler.scripttask.loadHistory(message);
+        }
+
+        if (typeof pluginHandler.scripttask.loadSchedule == 'function') {
+            pluginHandler.scripttask.loadSchedule(message);
+        }
     };
     
     obj.variableData = function (message) {
@@ -373,37 +449,62 @@ module.exports.scripttask = function (parent) {
     obj.makeJobsFromSchedules = function(scheduleId) {
         //obj.debug('ScriptTask', 'makeJobsFromSchedules starting');
         return obj.db.getSchedulesDueForJob(scheduleId)
-        .then(schedules => {
+        .then((/** @type Array.<JobSchedule> */ schedules) => {
             //obj.debug('ScriptTask', 'Found ' + schedules.length + ' schedules to process. Current time is: ' + Math.floor(new Date() / 1000));
+
             if (schedules.length) {
                 schedules.forEach(s => {
                     var nextJobTime = obj.determineNextJobTime(s);
+
                     var nextJobScheduled = false;
+
                     if (nextJobTime === null) {
                         //obj.debug('ScriptTask', 'Removing Job Schedule for', JSON.stringify(s));
                         obj.db.removeJobSchedule(s._id);
                     } else {
                         //obj.debug('ScriptTask', 'Scheduling Job for', JSON.stringify(s));
                         obj.db.get(s.scriptId)
-                        .then(scripts => {
-                            // if a script is scheduled to run, but a previous run hasn't completed, 
-                            // don't schedule another job for the same (device probably offline).
-                            // results in the minimum jobs running once an agent comes back online.
-                            return obj.db.getIncompleteJobsForSchedule(s._id)
-                            .then((jobs) => {
-                                if (jobs.length > 0) { /* obj.debug('Plugin', 'ScriptTask', 'Skipping job creation'); */ return Promise.resolve(); }
-                                else { /* obj.debug('Plugin', 'ScriptTask', 'Creating new job'); */ nextJobScheduled = true; return obj.db.addJob( { scriptId: s.scriptId, scriptName: scripts[0].name, node: s.node, runBy: s.scheduledBy, dontQueueUntil: nextJobTime, jobSchedule: s._id } ); }
-                            });
-                        })
-                        .then(() => {
-                            
-                            if (nextJobScheduled) { /* obj.debug('Plugin', 'ScriptTask', 'Updating nextRun time'); */ return obj.db.update(s._id, { nextRun: nextJobTime }); }
-                            else { /* obj.debug('Plugin', 'ScriptTask', 'NOT updating nextRun time'); */ return Promise.resolve(); }
-                        })
-                        .then(() => {
-                            obj.updateFrontEnd( { scriptId: s.scriptId, nodeId: s.node } );
-                        })
-                        .catch((e) => { console.log('PLUGIN: ScriptTask: Error managing job schedules: ', e); });
+                            .then((/** @type Array.<Script> */ scripts) => {
+                                // if a script is scheduled to run, but a previous run hasn't completed, 
+                                // don't schedule another job for the same (device probably offline).
+                                // results in the minimum jobs running once an agent comes back online.
+                                return obj.db.getIncompleteJobsForSchedule(s._id)
+                                    .then((jobs) => {
+                                        if (jobs.length > 0) {
+                                            /* obj.debug('Plugin', 'ScriptTask', 'Skipping job creation'); */
+                                            return Promise.resolve();
+                                        } else {
+                                            /* obj.debug('Plugin', 'ScriptTask', 'Creating new job'); */
+                                            nextJobScheduled = true;
+
+                                            return obj.db.addJob({
+                                                scriptId: s.scriptId,
+                                                scriptName: scripts[0].name,
+                                                node: s.node,
+                                                runBy: s.scheduledBy,
+                                                dontQueueUntil: nextJobTime,
+                                                jobSchedule: s._id,
+                                                state: jobState.SCHEDULED,
+                                            });
+                                        }
+                                    });
+                            })
+                            .then(() => {
+                                if (nextJobScheduled) {
+                                    /* obj.debug('Plugin', 'ScriptTask', 'Updating nextRun time'); */
+                                    return obj.db.update(s._id, { nextRun: nextJobTime });
+                                } else {
+                                    /* obj.debug('Plugin', 'ScriptTask', 'NOT updating nextRun time'); */
+                                    return Promise.resolve();
+                                }
+                            })
+                            .then(() => {
+                                obj.updateFrontEnd({
+                                    scriptId: s.scriptId,
+                                    nodeId: s.node
+                                });
+                            })
+                            .catch((e) => { console.log('PLUGIN: ScriptTask: Error managing job schedules: ', e); });
                     }
                 });
             }
@@ -413,34 +514,50 @@ module.exports.scripttask = function (parent) {
     obj.deleteElement = function (command) {
         var delObj = null;
         obj.db.get(command.id)
-        .then((found) => {
-          var file = found[0];
-          delObj = {...{}, ...found[0]};
-          return file;
-        })
-        .then((file) => {
-          if (file.type == 'folder') return obj.db.deleteByPath(file.path); //@TODO delete schedules for scripts within folders
-          if (file.type == 'script') return obj.db.deleteSchedulesForScript(file._id);
-          if (file.type == 'jobSchedule') return obj.db.deletePendingJobsForSchedule(file._id);
-        })
-        .then(() => {
-          return obj.db.delete(command.id)
-        })
-        .then(() => {
-          var updateObj = { tree: true };
-          if (delObj.type == 'jobSchedule') {
-              updateObj.scriptId = delObj.scriptId;
-              updateObj.nodeId = delObj.node;
-          }
-          return obj.updateFrontEnd( updateObj );
-        })
-        .catch(e => { console.log('PLUGIN: ScriptTask: Error deleting ', e.stack); });
+            .then((found) => {
+                var file = found[0];
+                delObj = {...{}, ...found[0]};
+                return file;
+            })
+            .then((file) => {
+                if (file.type == 'folder') {
+                    //@TODO delete schedules for scripts within folders
+                    return obj.db.deleteByPath(file.path);
+                } else if (file.type == 'script') {
+                    return obj.db.deleteSchedulesForScript(file._id);
+                } else if (file.type == 'jobSchedule') {
+                    return obj.db.deletePendingJobsForSchedule(file._id);
+                }
+            })
+            .then(() => {
+                return obj.db.delete(command.id);
+            })
+            .then(() => {
+                var updateObj = { tree: true };
+
+                if (delObj.type == 'jobSchedule') {
+                    updateObj.scriptId = delObj.scriptId;
+                    updateObj.nodeId = delObj.node;
+                }
+
+                return obj.updateFrontEnd( updateObj );
+            })
+            .catch(e => { console.log('PLUGIN: ScriptTask: Error deleting ', e.stack); });
     };
     
     obj.serveraction = function(command, myparent, grandparent) {
         switch (command.pluginaction) {
             case 'updateJobState':
                 //todo: update job state in database, update front-end
+                obj.db.update(command.jobId, { state: command.newState })
+                    .then(() => {
+                        //todo: update front end
+                        obj.updateFrontEnd({
+                            scriptId: command.scriptId,
+                            nodeId: myparent.dbNodeKey
+                        });
+                    });
+
                 break;
             case 'addScript':
                 obj.db.addScript(command.name, command.content, command.path, command.filetype)
@@ -584,6 +701,7 @@ module.exports.scripttask = function (parent) {
                 } */
                 var sj = command.schedule;
                 
+                /** @type JobSchedule */
                 var sched = {
                     scriptId: command.scriptId, 
                     node: null, 
@@ -622,23 +740,41 @@ module.exports.scripttask = function (parent) {
               var proms = [];
               if (Array.isArray(sel)) {
                 sel.forEach((s) => {
-                  proms.push(obj.db.addJob( { scriptId: scriptId, node: s, runBy: myparent.user.name } ));
+                  proms.push(
+                    obj.db.addJob({ 
+                        scriptId: scriptId, 
+                        node: s, 
+                        runBy: myparent.user.name,
+                        state: jobState.SCHEDULED,
+                    })
+                );
                 });
               } else {
-                proms.push(obj.db.addJob( { scriptId: scriptId, node: sel, runBy: myparent.user.name } ));
+                proms.push(
+                    obj.db.addJob({
+                        scriptId: scriptId,
+                        node: sel,
+                        runBy: myparent.user.name,
+                        state: jobState.SCHEDULED,
+                    })
+                );
               }
+
               Promise.all(proms)
-              .then(() => {
-                  return obj.db.get(scriptId);
-              })
-              .then(scripts => {
-                  return obj.db.updateScriptJobName(scriptId, scripts[0].name);
-              })
-              .then(() => {
-                  obj.resetQueueTimer();
-                  obj.queueRun();
-                  obj.updateFrontEnd( { scriptId: scriptId, nodeId: command.currentNodeId } );
-              });
+                .then(() => {
+                    return obj.db.get(scriptId);
+                })
+                .then(scripts => {
+                    return obj.db.updateScriptJobName(scriptId, scripts[0].name);
+                })
+                .then(() => {
+                    obj.resetQueueTimer();
+                    obj.queueRun();
+                    obj.updateFrontEnd({ 
+                        scriptId: scriptId, 
+                        nodeId: command.currentNodeId
+                    });
+                });
             break;
             case 'getScript':
                 //obj.debug('ScriptTask', 'getScript Triggered', JSON.stringify(command));
@@ -657,46 +793,55 @@ module.exports.scripttask = function (parent) {
             break;
             case 'jobComplete':
                 //obj.debug('ScriptTask', 'jobComplete Triggered', JSON.stringify(command));
-                var jobNodeHistory = null, scriptHistory = null;
                 var jobId = command.jobId, retVal = command.retVal, errVal = command.errVal, dispatchTime = command.dispatchTime;
                 var completeTime = Math.floor(new Date() / 1000);
-                obj.db.update(jobId, {
-                    completeTime: completeTime,
-                    returnVal: retVal,
-                    errorVal: errVal,
-                    dispatchTime: dispatchTime
+                
+                obj.db.update(
+                    jobId,
+                    {
+                        completeTime: completeTime,
+                        returnVal: retVal,
+                        errorVal: errVal,
+                        dispatchTime: dispatchTime,
+                        state: jobState.COMPLETE,
+                    }
+                ).then(() => {
+                    return obj.db.get(jobId)
+                        .then(jobs => {
+                            return Promise.resolve(jobs[0].jobSchedule);
+                        })
+                        .then(sId => {
+                            if (sId == null) return Promise.resolve();
+                            return obj.db.update(sId, { lastRun: completeTime } )
+                            .then(() => {
+                                obj.makeJobsFromSchedules(sId);
+                            });
+                        });
                 })
                 .then(() => {
-                    return obj.db.get(jobId)
-                    .then(jobs => {
-                        return Promise.resolve(jobs[0].jobSchedule);
-                    })
-                    .then(sId => {
-                        if (sId == null) return Promise.resolve();
-                        return obj.db.update(sId, { lastRun: completeTime } )
-                        .then(() => {
-                            obj.makeJobsFromSchedules(sId);
-                        });
+                    obj.updateFrontEnd({ 
+                        scriptId: command.scriptId, 
+                        nodeId: myparent.dbNodeKey
                     });
                 })
-                .then(() => {
-                    obj.updateFrontEnd( { scriptId: command.scriptId, nodeId: myparent.dbNodeKey } );
-                })
                 .catch(e => { console.log('PLUGIN: ScriptTask: Failed to complete job. ', e); });
-                // update front end by eventing
-            break;
+
+                break;
             case 'loadNodeHistory':
                 obj.updateFrontEnd( { nodeId: command.nodeId } );
-            break;
+
+                break;
             case 'loadScriptHistory':
                 obj.updateFrontEnd( { scriptId: command.scriptId } );
-            break;
+
+                break;
             case 'editScript':
                 obj.db.update(command.scriptId, { type: command.scriptType, name: command.scriptName, content: command.scriptContent })
-                .then(() => {
-                    obj.updateFrontEnd( { scriptId: command.scriptId, tree: true } );
-                });
-            break;
+                    .then(() => {
+                        obj.updateFrontEnd( { scriptId: command.scriptId, tree: true } );
+                    });
+
+                break;
             case 'clearAllPendingJobs':
                 obj.db.deletePendingJobsForNode(myparent.dbNodeKey);
             break;

@@ -6,6 +6,59 @@
 */
 
 "use strict";
+
+/**
+ * A job execution instruction
+ * @typedef {Object} Job
+ * @property {ObjectID} _id
+ * @property {'job'} type - type of record (for MongoDB discrimination)
+ * @property {number} queueTime - UTC millis when job was queued
+ * @property {number} dontQueueUntil - UTC millis of when job is eligble to be queued
+ * @property {number} dispatchTime - UTC millis when the job was dispatched to client
+ * @property {number} completeTime - UTC millis when the job was completed
+ * @property {string} node - mesh node ID the job is to run on
+ * @property {string} scriptId - id of the script to execute
+ * @property {string} scriptName - name of the script to run
+ * @property {unknown|null} replaceVars - variable replacement collection
+ * @property {string|null} returnVal - result of the job (i.e. script stdout once complete)
+ * @property {string|null} errorVal - error output of the job (i.e. script stderr once complete)
+ * @property {unknown} returnAct - unknown purpose
+ * @property {string} runBy - username that invoked the job
+ * @property {ObjectID} jobSchedule - reference to job schedule
+ * @property {jobState} state - state of the job
+ */
+
+/**
+ * A job execution schedule
+ * @typedef {Object} JobSchedule
+ * @property {ObjectID} _id - mongo ID
+ * @property {'jobSchedule'} type - type discriminator
+ * @property {string} scriptId - id of the script
+ * @property {string} node - node the script is scheduled on
+ * @property {string} scheduledBy - who made the schedule
+ * @property {'once'|'minutes'|'hourly'|'daily'|'weekly'} recur - recurrence basis
+ * @property {number} interval - recurrence interval
+ * @property {unknown} daysOfWeek - which days of the week to run on
+ * @property {number} startAt - UTC millis of when the schedule begins
+ * @property {number} endAt - UTC millis of when the schedule ends
+ * @property {number} lastRun - UTC millis of the last execution of this schedule
+ * @property {number} nextRun - UTC millis of the next time to run the schedule
+ */
+
+/**
+ * A script
+ * @typedef {Object} Script
+ * @property {ObjectID} _id - mongo ID
+ * @property {'script'} type - type discriminator
+ * @property {string} path - virtual folder path
+ * @property {string} name - script name
+ * @property {string} content - script contents
+ * @property {string} contentHash - script hash
+ * @property {'ps1'|'bat'|'bash'} filetype - type of script
+ */
+
+const jobState = require('./jobState');
+
 var Datastore = null;
 var formatId = null;
 
@@ -73,25 +126,31 @@ module.exports.CreateDB = function(meshserver) {
             }
             return obj.scriptFile.updateOne( { _id: id }, { $set: args } );
         };
+
         obj.delete = function(id) {
             id = formatId(id);
             return obj.scriptFile.deleteOne( { _id: id } );
         };
+
         obj.deleteByPath = function(path) {
           return obj.scriptFile.deleteMany( { path: path, type: { $in: ['script', 'folder'] } } );
         };
+
         obj.deleteSchedulesForScript = function(id) {
             id = formatId(id);
             return obj.scriptFile.deleteMany( { type: 'jobSchedule', scriptId: id } );
         };
+
         obj.getByPath = function(path) {
           return obj.scriptFile.find( { type: { $in: [ 'script', 'folder' ] }, path: path }).toArray();
         };
+
         obj.get = function(id) {
             if (id == null || id == 'null') return new Promise(function(resolve, reject) { resolve([]); });
             id = formatId(id);
             return obj.scriptFile.find( { _id: id } ).toArray();
         };
+
         obj.addJob = function(passedObj) {
           var nowTime = Math.floor(new Date() / 1000);
           var defaultObj = { 
@@ -108,7 +167,8 @@ module.exports.CreateDB = function(meshserver) {
               errorVal: null,
               returnAct: null,
               runBy: null,
-              jobSchedule: null
+              jobSchedule: null,
+              state: jobState.CREATED,
           };
           var jObj = {...defaultObj, ...passedObj};
           
@@ -116,14 +176,32 @@ module.exports.CreateDB = function(meshserver) {
           
           return obj.scriptFile.insertOne(jObj);
         };
+
         obj.addJobSchedule = function(schedObj) {
             schedObj.type = 'jobSchedule';
-            if (schedObj.node == null || schedObj.scriptId == null) { console.log('PLUGIN: SciptTask: Could not add job schedule'); return false; }
+
+            if (schedObj.node == null || schedObj.scriptId == null) {
+                console.log('PLUGIN: SciptTask: Could not add job schedule');
+                
+                return false;
+            }
+
             return obj.scriptFile.insertOne(schedObj);
         };
+
         obj.removeJobSchedule = function (id) {
             return obj.delete(id);
         };
+
+        /**
+         * Returns JobSchedule objects which are overdue (nextRun <= now) and for which the current
+         * time is within the execution window (endAt <= now).
+         * 
+         * If scheduleId is provided, limits results to that specific schedule.
+         * 
+         * @param {string|undefined} scheduleId - mongo DB _id for schedule
+         * @returns {Promise.<Array.<JobSchedule>>}
+         */
         obj.getSchedulesDueForJob = function(scheduleId) {
             var nowTime = Math.floor(new Date() / 1000);
             var scheduleIdLimiter = {};
@@ -144,6 +222,7 @@ module.exports.CreateDB = function(meshserver) {
                 ...scheduleIdLimiter
             }).toArray();
         };
+
         obj.deletePendingJobsForNode = function(node) {
             return obj.scriptFile.deleteMany({ 
                 type: 'job', 
@@ -151,6 +230,7 @@ module.exports.CreateDB = function(meshserver) {
                 completeTime: null,
             });
         };
+
         obj.getPendingJobs = function(nodeScope) {
           if (nodeScope == null || !Array.isArray(nodeScope)) {
             return false;
@@ -167,38 +247,63 @@ module.exports.CreateDB = function(meshserver) {
               ]
           }).toArray();
         };
+
         obj.getJobNodeHistory = function(nodeId) {
             return obj.scriptFile.find( { 
                 type: 'job', 
                 node: nodeId,
             }).sort({ queueTime: -1 }).limit(200).toArray();
         };
+
+        /**
+         * Returns an array of Job for scriptId sorted desc by completeTime, then by queueTime.
+         * Limits results to 200 items.
+         * 
+         * @param {string} scriptId 
+         * @returns {Promise.<Array.<Job>>}
+         */
         obj.getJobScriptHistory = function(scriptId) {
-            return obj.scriptFile.find( { 
-                type: 'job', 
-                scriptId: scriptId,
-            }).sort({ completeTime: -1, queueTime: -1 }).limit(200).toArray();
+            return obj.scriptFile
+                .find({ 
+                    type: 'job', 
+                    scriptId: scriptId,
+                })
+                .sort({ completeTime: -1, queueTime: -1 })
+                .limit(200)
+                .toArray();
         };
+
         obj.updateScriptJobName = function(scriptId, scriptName) {
             return obj.scriptFile.updateMany({ type: 'job', scriptId: scriptId }, { $set: { scriptName: scriptName } });    
         };
+
+        /**
+         * 
+         * @param {string} scriptId 
+         * @returns {Promise.<Array.<JobSchedule>>}
+         */
         obj.getJobSchedulesForScript = function(scriptId) {
             return obj.scriptFile.find( { type: 'jobSchedule', scriptId: scriptId } ).toArray();
         };
+
         obj.getJobSchedulesForNode = function (nodeId) {
             return obj.scriptFile.find( { type: 'jobSchedule', node: nodeId } ).toArray();
         };
+
         obj.getIncompleteJobsForSchedule = function (schedId) {
             return obj.scriptFile.find( { type: 'job', jobSchedule: schedId, completeTime: null } ).toArray();
         };
+
         obj.deletePendingJobsForSchedule = function (schedId) {
             return obj.scriptFile.deleteMany( { type: 'job', jobSchedule: schedId, completeTime: null } );
         };
+
         obj.deleteOldHistory = function() {
             var nowTime = Math.floor(new Date() / 1000);
             var oldTime = nowTime - (86400 * 90); // 90 days
             return obj.scriptFile.deleteMany( { type: 'job', completeTime: { $lte: oldTime } } );
         };
+
         obj.addVariable = function(name, scope, scopeTarget, value) {
             var vObj = { 
                 type: 'variable',
@@ -209,6 +314,7 @@ module.exports.CreateDB = function(meshserver) {
             };
             return obj.scriptFile.insertOne(vObj);
         };
+
         obj.getVariables = function(limiters) {
             if (limiters != null) {
                 var find = { 
@@ -239,6 +345,7 @@ module.exports.CreateDB = function(meshserver) {
                 return obj.scriptFile.find({ type: 'variable' }).sort({ name: 1 }).toArray();
             }
         };
+
         obj.checkDefaults = function() {
             obj.scriptFile.find( { type: 'folder', name: 'Shared', path: 'Shared' } ).toArray()
             .then(found => {

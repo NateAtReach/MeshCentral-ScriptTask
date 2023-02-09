@@ -8,10 +8,11 @@
 "use strict";
 
 var JobState = {
-    RECEIVED: 1,
-    PENDING: 2,
-    RUNNING: 3,
-    COMPLETE: 4,
+    SCHEDULED: 1,
+    DISPATCHED: 2,
+    PENDING: 3,
+    RUNNING: 4,
+    COMPLETE: 5,
 };
 
 /**
@@ -267,7 +268,6 @@ function pruneJobQueue() {
 function getJobCount(states) {
     if(typeof states === 'undefined') {
         states = [
-            JobState.RECEIVED,
             JobState.PENDING,
             JobState.RUNNING
         ];
@@ -385,6 +385,8 @@ function runNextJob() {
         "action": "plugin", 
         "plugin": "scripttask",
         "pluginaction": "updateJobState",
+        "jobId": nextJob.jobId,
+        "scriptId": nextJob.scriptId,
         "newState": JobState.RUNNING,
         "sessionid": nextJob.sessionId,
         "tag": "console"
@@ -470,6 +472,17 @@ function consoleaction(args, rights, sessionid, parent) {
                 state: JobState.PENDING,
                 randomName: Math.random().toString(32).replace('0.', '')
             };
+
+            mesh.SendCommand({
+                "action": "plugin", 
+                "plugin": "scripttask",
+                "pluginaction": "updateJobState",
+                "jobId": args.jobId,
+                "scriptId": args.scriptId,
+                "newState": JobState.PENDING,
+                "sessionid": args.sessionId,
+                "tag": "console"
+            });
 
             if(enqueueJob(jObj)) {
                 log('enqueued job (jobId=' + jObj.jobId + ')');
