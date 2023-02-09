@@ -219,6 +219,8 @@ function pruneJobQueue() {
         var startedStale = typeof firstJob.utcStartedAt === 'number' && firstJob.utcStartedAt <= twentyFiveMinutesAgo;
 
         if(completedStale || startedStale) {
+            log('removing stale job queue item (jobId=' + firstJob.jobId + ')');
+
             jobQueue.shift();
         } else {
             break;
@@ -253,6 +255,38 @@ function getJobCount(states) {
 }
 
 /**
+ * @template T
+ * @template [U = T]
+ * @param { function(T, Job): U } func
+ * @param {T} initialValue
+ * @returns {T}
+ */
+function jobQueueReduce(func, initialValue) {
+    return jobQueue.reduce(func, initialValue);
+}
+
+//set an interval to check for stalled run job loop. if we have > 0 pending and < 1 running, we
+//should start the loop again.
+setInterval(function() {
+    pruneJobQueue();
+
+    var result = jobQueueReduce(
+        function(memo, job) {
+            return {
+                pending: memo.pending + (job.state === JobState.PENDING ? 1 : 0),
+                running: memo.running + (job.state === JobState.RUNNING ? 1 : 0)
+            };
+        },
+        { running: 0, pending: 0 }
+    );
+
+    if(result.pending > 0 && result.running < 1) {
+        log('WARNING: detected stalled job execution loop; restarting queue processor');
+        runNextJob();
+    }
+}, 60000);
+
+/**
  * Callback executed if a download takes too long to be received
  * @param {Job} job 
  */
@@ -283,7 +317,7 @@ function runNextJob() {
 
     var runningJob = getNextJobInState(JobState.RUNNING);
     if(typeof runningJob !== 'undefined') {
-        log('WARNING: there is a job already running; aborting runNextJob');
+        log('there is a job already running; terminating this job queue loop');
 
         return;
     }
@@ -324,13 +358,9 @@ function runNextJob() {
             "tag": "console"
         });
 
-        try {
-            nextJob.downloadStallTimer = setTimeout(function() {
-                onDownloadTimeout(nextJob);
-            }, 30000);
-        } catch(e) {
-            log('WARNING: failed to set download stall timer for jobId=' + nextJob.jobId);
-        }
+        nextJob.downloadStallTimer = setTimeout(function() {
+            onDownloadTimeout(nextJob);
+        }, 30000);
 
         pendingDownload.push(nextJob);
 
@@ -402,7 +432,7 @@ function consoleaction(args, rights, sessionid, parent) {
         case 'cacheScript':
         {
             var sObj = args.script;
-            
+
             if(options.swallowNextDownload.value === 'on') {
                 options.swallowNextDownload.value = 'off';
 
@@ -545,6 +575,20 @@ function finalizeJob(job, retVal, errVal) {
 
     if (!isNullish(errVal) && !isNullish(errVal.stack)) {
         errVal = errVal.stack;
+    }
+
+    if(!isNullish(job.downloadStallTimer)) {
+        log('WARNING: found dangling downloadStallTimer on job (jobId=' + job.jobId + ')');
+
+        clearTimeout(job.downloadStallTimer);
+        job.downloadStallTimer = undefined;
+    }
+
+    if(!isNullish(job.abortTimer)) {
+        log('WARNING: found dangling abortTimer on job (jobId=' + job.jobId + ')');
+
+        clearTimeout(job.abortTimer);
+        job.abortTimer = undefined;
     }
 
     log('finalizing job (jobId=' + job.jobId + ', scriptId=' + job.scriptId + ')');
@@ -782,7 +826,7 @@ function getScriptFromCache(id) {
 
     var script = db.Get(scriptKey);
     if (script == '' || script == null) {
-        log('WARNING: script key ' + scriptKey + ' not found in cache');
+        log('script key ' + scriptKey + ' not found in cache');
 
         return null;
     }
