@@ -283,6 +283,8 @@ setInterval(function() {
     if(result.pending > 0 && result.running < 1) {
         log('WARNING: detected stalled job execution loop; restarting queue processor');
         runNextJob();
+    } else {
+        log('job queue processor is healthy');
     }
 }, 60000);
 
