@@ -34,8 +34,6 @@ var JobState = {
  */
 
 var mesh;
-var isWsconnection = false;
-var wscon = null;
 var db = require('SimpleDataStore').Shared();
 var pendingDownload = [];
 /** @type Array<Job> */
@@ -63,6 +61,14 @@ var jobQueueHealthCheckTimer = null;
 var fs = require('fs');
 var child_process = require('child_process');
 
+/**
+ * Encodes str into unicode code bytes and returns a base64 representation.
+ * 
+ * This implement does not handle code points, etc. As such, input should be limited to ASCII.
+ * 
+ * @param {string} str 
+ * @returns {string}
+ */
 function strToPowershellEncodedCommand(str) {
     var buf = new ArrayBuffer(str.length * 2);
     var bufView = new Uint16Array(buf);
@@ -72,10 +78,20 @@ function strToPowershellEncodedCommand(str) {
     return new Buffer(new Uint8Array(buf)).toString('base64');
 }
 
+/**
+ * Returns true if thing is exactly null or has type undefined.
+ * @param {*} thing 
+ * @returns 
+ */
 function isNullish(thing) {
     return typeof thing === 'undefined' || null === thing;
 }
 
+/**
+ * Formats provided Date object as YYYYMMDD
+ * @param {Date} date 
+ * @returns {string}
+ */
 function getYyyyMmDd(date) {
     var mm = date.getMonth() + 1; // getMonth() is zero-based
     var dd = date.getDate();
@@ -86,6 +102,11 @@ function getYyyyMmDd(date) {
            ].join('');
 }
 
+/**
+ * writes a log message to the current day's log file.
+ * 
+ * @param {string} str 
+ */
 var log = function(str) {
     var today = getYyyyMmDd(new Date());
     var todayLogFile = 'scripttask-' + today + '.log';
@@ -102,6 +123,9 @@ Array.prototype.remove = function(from, to) {
   return this.push.apply(this, rest);
 };
 
+/**
+ * Deletes temp script files older than -30 days.
+ */
 function cleanScriptFolder() {
     var thirtyDaysAgo = new Date().setDate(new Date().getDate() - 30);
 
@@ -116,6 +140,9 @@ function cleanScriptFolder() {
     });
 }
 
+/**
+ * Deletes log files older than -7 days.
+ */
 function cleanLogFolder() {
     var sevenDaysAgo = 19700101;
 
@@ -174,7 +201,8 @@ function getJobById(jobId) {
 }
 
 /**
- * Adds the job to the job queue
+ * Adds the job to the job queue. Returns true if the job was added, false if the job already
+ * exists.
  * @param {Job} job 
  * @returns {boolean}
  */
@@ -220,7 +248,7 @@ function pruneJobQueue() {
         var startedStale = typeof firstJob.utcStartedAt === 'number' && firstJob.utcStartedAt <= twentyFiveMinutesAgo;
 
         if(completedStale || startedStale) {
-            log('removing stale job queue item (jobId=' + firstJob.jobId + ')');
+            log('removing stale job queue item (jobId=' + firstJob.jobId + ', state=' + firstJob.state + ')');
 
             jobQueue.shift();
         } else {
@@ -326,6 +354,9 @@ function onDownloadTimeout(job) {
     finalizeJob(job, undefined, "timed out waiting for script to download");
 }
 
+/**
+ * Runs the next pending job in the job queue.
+ */
 function runNextJob() {
     pruneJobQueue();
 
@@ -387,17 +418,21 @@ function runNextJob() {
     }
 }
 
+/**
+ * Handler for events arriving from Mesh server.
+ * @param {*} args - event arguments
+ * @param {*} rights - unknown
+ * @param {string} sessionid - session id
+ * @param {*} parent - mesh server object
+ * @returns 
+ */
 function consoleaction(args, rights, sessionid, parent) {
-    isWsconnection = false;
-    wscon = parent;
-
     if (typeof args['_'] == 'undefined') {
         args['_'] = [];
         args['_'][1] = args.pluginaction;
         args['_'][2] = null;
         args['_'][3] = null;
         args['_'][4] = null;
-        isWsconnection = true;
     }
     
     var fnname = args['_'][1];
@@ -782,31 +817,6 @@ function runBash(sObj, jObj) {
  */
 function runScript(sObj, jObj) {
     log('executing script (scriptId=' + sObj._id + ', jobId=' + jObj.jobId + ')');
-
-    // get current processes and clean running jobs if they are no longer running (computer fell asleep, user caused process to stop, etc.)
-    // if (process.platform != 'linux' && runningJobs.length > 0) { // linux throws errors here in the meshagent for some reason
-    //     log('updating internal job ledger; there are currently ' + runningJobs.length  + ' job(s) running');
-
-    //     require('process-manager').getProcesses(function (plist) {
-    //         if (runningJobs.length > 0) {
-    //             runningJobs.forEach(function (jobId, idx) {
-    //                 log('checking for running job ' + jobId + ' with PID ' + runningJobPIDs[jobId]);
-
-    //                 if (typeof plist[runningJobPIDs[jobId]] === 'undefined' || typeof plist[runningJobPIDs[jobId]].cmd !== 'string') {
-    //                     log('found orphaned job ' + jobId + '; untracking');
-
-    //                     delete runningJobPIDs[jobId];
-    //                     runningJobs.remove(runningJobs.indexOf(idx));
-    //                 }
-    //             });
-    //         }
-    //     });
-    // }
-
-    // if (jobIsRunning(jObj)) {
-    //     log('WARNING: job [' + jObj.jobId + '] is already running; skipping execution');
-    //     return;
-    // }
 
     if (null !== jObj.replaceVars) {
         log('replacing variables in script');
