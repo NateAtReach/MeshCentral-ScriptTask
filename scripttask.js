@@ -262,10 +262,14 @@ module.exports.scripttask = function (parent) {
             };
 
             const dispatchToNode = () => {
+                obj.dbg(`dispatching job ${job._id.toString()} to ${job.node}`);
+
                 obj.meshServer.webserver.wsagents[job.node].send(JSON.stringify(jObj));
             };
             
-            try { 
+            try {
+                obj.dbg(`updating job metadata for job ${job._id.toString()}; set dispatchTime=${dispatchTime}, state: ${jobState.DISPATCHED}`);
+                
                 await obj.db.update(
                     job._id,
                     {
