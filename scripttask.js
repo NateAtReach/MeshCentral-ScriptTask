@@ -30,7 +30,9 @@ module.exports.scripttask = function (parent) {
     obj.intervalTimer = null;
     obj.intervalMeshesTimer = null;
     obj.dbg = function(message) {
-        parent.parent.debug('plugins', 'scripttask', message);
+        try {
+            parent.parent.debug('plugins', 'scripttask', message);
+        } catch(e) {}
     };
     obj.VIEWS = __dirname + '/views/';
     obj.exports = [      
@@ -183,7 +185,7 @@ module.exports.scripttask = function (parent) {
     
     obj.queueRun = async function() {
         const onlineAgents = Object.keys(obj.meshServer.webserver.wsagents);
-        obj.dbg('processing node schedule queue, there are ' + onlineAgents.length + 'agent(s) online');
+        obj.dbg('processing node schedule queue, there are ' + onlineAgents.length + ' agent(s) online');
 
         /** @type Array.<Job> */
         const pendingJobs = await obj.db.getPendingJobs(onlineAgents); //todo: chunk by 20
@@ -271,7 +273,7 @@ module.exports.scripttask = function (parent) {
                 );
             } catch (e) {
                 obj.dbg(`ERROR: failed to update job state; reason=${e?.message || e?.toString() || 'UNKNOWN'}`);
-                
+
                 dispatchToNode();
             }
         }
