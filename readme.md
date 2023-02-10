@@ -53,6 +53,54 @@ Drag and drop some of your favorite admin scripts on the file tree. You'll then 
 ## Other Information
 This is fairly new and in beta. Testing was mostly done in the latest Chrome and Firefox. No attempt was made to be compatible with older IE browsers. Endpoint testing was done on Windows 10 (1903) and OS X 10.13.
 
+## Debugging
+The plugin emits log message via the built-in Mesh Central "debug" mechanism. The plugin emits logs
+using source "plugins". You can get these logs 2 ways:
+
+### Debugging: Server Log Files
+
+Add "plugins" to your config.json file under settings.log:
+
+```JSON
+{
+  "$schema": "http://info.meshcentral.com/downloads/meshcentral-config-schema.json",
+  ...
+  "settings": {
+    ...
+    "log": [
+        ...
+        "plugins"
+    ]
+  }
+```
+
+The scripttask plugin logs will now appear in the server logs.
+
+### Debugging: Mesh Central Web Portal
+
+The Mesh Central UI offers a "tracing" mechanism under My Server > Trace. With the out-of-box code,
+Mesh Central does not offer the ability to capture "plugins" log records using the built-in
+interface. That is to say, the sources you can capture are hard-coded into the user interface :(
+
+Fortunately, much of JavaScript which drives the UI is accessible on the DOM Window object. You can
+use the following code in Chrome DevTools to enable tracing of the "plugins" source:
+
+```JavaScript
+((sources) => {
+    serverTraceSources = sources;
+	meshserver.send({ action: 'traceinfo', traceSources: sources});
+	QH('p41traceStatus', EscapeHtml(sources.join(', ')));
+})([ 'plugins' ]);
+```
+
+This code:
+
+* Updates the serverTraceSources global variable
+* Sends a message to the server instructing the server to send "plugins" source events to you
+* Updates the UI to indicate you are tracing these events
+
+NOTE: you may add additional sources if you want to trace other sources in addition to "plugins"
+
 ## Screenshots
 ![Device Page](https://user-images.githubusercontent.com/1929277/71248033-f4519b00-22e7-11ea-9aa6-ef22e0b9fdb2.png)
 ![Script Editor](https://user-images.githubusercontent.com/1929277/71248034-f4519b00-22e7-11ea-8ab4-ccad3e959a1a.png)

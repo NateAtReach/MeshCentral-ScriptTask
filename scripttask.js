@@ -29,7 +29,6 @@ module.exports.scripttask = function (parent) {
     obj.db = null;
     obj.intervalTimer = null;
     obj.intervalMeshesTimer = null;
-    obj.debug = obj.meshServer.debug;
     obj.dbg = function(message) {
         parent.parent.debug('plugins', 'scripttask', message);
     };
@@ -56,6 +55,8 @@ module.exports.scripttask = function (parent) {
     };
 
     obj.resetTimers = function() {
+        obj.dbg('resetting queue timers');
+
         obj.resetQueueTimer();
         obj.resetMeshesQueueTimer();
     };
@@ -71,12 +72,16 @@ module.exports.scripttask = function (parent) {
     };
     
     obj.server_startup = function() {
+        obj.dbg('starting up scripttask in response to server_startup command');
+
         obj.meshServer.pluginHandler.scripttask_db = require (__dirname + '/db.js').CreateDB(obj.meshServer);
         obj.db = obj.meshServer.pluginHandler.scripttask_db;
         obj.resetTimers();
     };
     
     obj.onDeviceRefreshEnd = function() {
+        obj.dbg('onDeviceRefreshEnd; registering plugin tab');
+
         pluginHandler.registerPluginTab({
             tabTitle: 'ScriptTask',
             tabId: 'pluginScriptTask'
@@ -177,86 +182,102 @@ module.exports.scripttask = function (parent) {
     };
     
     obj.queueRun = async function() {
-        var onlineAgents = Object.keys(obj.meshServer.webserver.wsagents);
-        //obj.debug('ScriptTask', 'Queue Running', Date().toLocaleString(), 'Online agents: ', onlineAgents);
+        const onlineAgents = Object.keys(obj.meshServer.webserver.wsagents);
+        obj.dbg('processing node schedule queue, there are ' + onlineAgents.length + 'agent(s) online');
 
-        obj.db.getPendingJobs(onlineAgents)
-            .then((jobs) => {
-                if (jobs.length == 0) {
-                    return;
-                }
+        /** @type Array.<Job> */
+        const pendingJobs = await obj.db.getPendingJobs(onlineAgents); //todo: chunk by 20
 
-                //@TODO check for a large number and use taskLimiter to queue the jobs
+        if(pendingJobs.length < 1) {
+            obj.dbg('no pending jobs found for online agents');
 
-                jobs.forEach(job => {
-                    obj.db.get(job.scriptId)
-                        .then(async (script) => {
-                            script = script[0];
-                            var foundVars = script.content.match(/#(.*?)#/g);
-                            var replaceVars = {};
-                            if (foundVars != null && foundVars.length > 0) {
-                                var foundVarNames = [];
-                                foundVars.forEach(fv => {
-                                    foundVarNames.push(fv.replace(/^#+|#+$/g, ''));
-                                });
-                                
-                                var limiters = { 
-                                    scriptId: job.scriptId,
-                                    nodeId: job.node,
-                                    meshId: obj.meshServer.webserver.wsagents[job.node]['dbMeshKey'],
-                                    names: foundVarNames
-                                };
-                                var finvals = await obj.db.getVariables(limiters);
-                                var ordering = { 'global': 0, 'script': 1, 'mesh': 2, 'node': 3 }
-                                finvals.sort((a, b) => {
-                                    return (ordering[a.scope] - ordering[b.scope])
-                                    || a.name.localeCompare(b.name);
-                                });
-                                finvals.forEach(fv => {
-                                    replaceVars[fv.name] = fv.value;
-                                });
-                                replaceVars['GBL:meshId'] = obj.meshServer.webserver.wsagents[job.node]['dbMeshKey'];
-                                replaceVars['GBL:nodeId'] = job.node;
-                                //console.log('FV IS', finvals);
-                                //console.log('RV IS', replaceVars);
-                            }
-                            var dispatchTime = Math.floor(new Date() / 1000);
-                            /** @type Job */
-                            var jObj = { 
-                                action: 'plugin', 
-                                plugin: 'scripttask', 
-                                pluginaction: 'triggerJob',
-                                jobId: job._id,
-                                scriptId: job.scriptId,
-                                replaceVars: replaceVars,
-                                scriptHash: script.contentHash,
-                                dispatchTime: dispatchTime,
-                                state: jobState.DISPATCHED
-                            };
-                            
-                            try { 
-                                var dispatchToNode = () => {
-                                    obj.meshServer.webserver.wsagents[job.node].send(JSON.stringify(jObj));
-                                };
+            return;
+        }
 
-                                obj.db.update(
-                                    job._id,
-                                    {
-                                        dispatchTime: dispatchTime,
-                                        state: jobState.DISPATCHED,
-                                    }
-                                ).then(dispatchToNode)
-                                .catch(dispatchToNode);
-                            } catch (e) { }
-                        })
-                        .catch(e => console.log('PLUGIN: ScriptTask: Could not dispatch job.', e));
+        /** @type Object.<string, Script> */
+        const scriptsById = {};
+        for(let job of pendingJobs) {
+            if(!(job.scriptId in scriptsById)) {
+                scriptsById[job.scriptId] = (await obj.db.get(job.scriptId))[0];
+            }
+
+            const script = scriptsById[job.scriptId];
+
+            obj.dbg(`executing pending job; jobId=${job._id.toString()}, scriptId=${job.scriptId}, scriptName=${job.scriptName}, node=${job.node}`);
+
+            const foundVars = script.content.match(/#(.*?)#/g);
+            const replaceVars = {};
+
+            if (foundVars != null && foundVars.length > 0) {
+                const foundVarNames = [];
+
+                foundVars.forEach(fv => {
+                    foundVarNames.push(fv.replace(/^#+|#+$/g, ''));
                 });
-            })
-            .then(() => {
-                obj.makeJobsFromSchedules();
-                obj.cleanHistory();
-            })
-            .catch(e => { console.log('PLUGIN: ScriptTask: Queue Run Error: ', e); });
+                
+                const limiters = { 
+                    scriptId: job.scriptId,
+                    nodeId: job.node,
+                    meshId: obj.meshServer.webserver.wsagents[job.node]['dbMeshKey'],
+                    names: foundVarNames
+                };
+
+                const finvals = await obj.db.getVariables(limiters);
+                const ordering = {
+                    'global': 0,
+                    'script': 1,
+                    'mesh': 2,
+                    'node': 3
+                };
+
+                finvals.sort((a, b) => {
+                    return (ordering[a.scope] - ordering[b.scope])
+                        || a.name.localeCompare(b.name);
+                });
+
+                finvals.forEach(fv => {
+                    replaceVars[fv.name] = fv.value;
+                });
+
+                replaceVars['GBL:meshId'] = obj.meshServer.webserver.wsagents[job.node]['dbMeshKey'];
+                replaceVars['GBL:nodeId'] = job.node;
+            }
+
+            const dispatchTime = Math.floor(new Date() / 1000);
+            /** @type Job */
+            const jObj = { 
+                action: 'plugin', 
+                plugin: 'scripttask', 
+                pluginaction: 'triggerJob',
+                jobId: job._id,
+                scriptId: job.scriptId,
+                replaceVars: replaceVars,
+                scriptHash: script.contentHash,
+                dispatchTime: dispatchTime,
+                state: jobState.DISPATCHED
+            };
+
+            const dispatchToNode = () => {
+                obj.meshServer.webserver.wsagents[job.node].send(JSON.stringify(jObj));
+            };
+            
+            try { 
+                await obj.db.update(
+                    job._id,
+                    {
+                        dispatchTime: dispatchTime,
+                        state: jobState.DISPATCHED,
+                    }
+                );
+            } catch (e) {
+                obj.dbg(`ERROR: failed to update job state; reason=${e?.message || e?.toString() || 'UNKNOWN'}`);
+                
+                dispatchToNode();
+            }
+        }
+
+        obj.makeJobsFromSchedules();
+        obj.cleanHistory();
     };
     
     obj.cleanHistory = function() {
