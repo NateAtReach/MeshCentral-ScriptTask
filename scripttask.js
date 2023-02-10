@@ -209,6 +209,8 @@ module.exports.scripttask = function (parent) {
             const replaceVars = {};
 
             if (foundVars != null && foundVars.length > 0) {
+                obj.dbg(`performing server-side script variable replacement; jobId=${job._id.toString()}`);
+
                 const foundVarNames = [];
 
                 foundVars.forEach(fv => {
@@ -241,6 +243,8 @@ module.exports.scripttask = function (parent) {
 
                 replaceVars['GBL:meshId'] = obj.meshServer.webserver.wsagents[job.node]['dbMeshKey'];
                 replaceVars['GBL:nodeId'] = job.node;
+            } else {
+                obj.dbg(`no server-side variable replacements found; jobId=${job._id.toString()}`);
             }
 
             const dispatchTime = Math.floor(new Date() / 1000);
@@ -271,7 +275,7 @@ module.exports.scripttask = function (parent) {
                 );
             } catch (e) {
                 obj.dbg(`ERROR: failed to update job state; reason=${e?.message || e?.toString() || 'UNKNOWN'}`);
-
+            } finally {
                 dispatchToNode();
             }
         }

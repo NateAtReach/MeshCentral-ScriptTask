@@ -570,8 +570,6 @@ function redrawScriptTree() {
   }
 
   function prepHistory(nh) {
-      console.log('prepHistory:nh =>', nh);
-
       var nowTime = Math.floor(new Date() / 1000);
       var d = new Date(0);
       d.setUTCSeconds(nh.latestTime);
