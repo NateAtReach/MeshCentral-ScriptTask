@@ -31,7 +31,7 @@ module.exports.scripttask = function (parent) {
     obj.intervalMeshesTimer = null;
     obj.debug = obj.meshServer.debug;
     obj.dbg = function(message) {
-        obj.debug('plugins', 'scripttask', message);
+        parent.parent.debug('plugins', 'scripttask', message);
     };
     obj.VIEWS = __dirname + '/views/';
     obj.exports = [      
