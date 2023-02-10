@@ -30,9 +30,9 @@ module.exports.scripttask = function (parent) {
     obj.intervalTimer = null;
     obj.intervalMeshesTimer = null;
     obj.debug = obj.meshServer.debug;
-    obj.dbg = function(category, message) {
-        obj.debug('plugin:scripttask', category, message);
-    }
+    obj.dbg = function(message) {
+        obj.debug('plugins', 'scripttask', message);
+    };
     obj.VIEWS = __dirname + '/views/';
     obj.exports = [      
         'onDeviceRefreshEnd',
@@ -103,7 +103,7 @@ module.exports.scripttask = function (parent) {
     };
 
     obj.processSchedulesForMeshes = async () => {
-        obj.dbg('processSchedulesForMeshes', 'running processSchedulesForMeshes @ ' + Date.now());
+        obj.dbg('running processSchedulesForMeshes @ ' + Date.now());
 
         /*
             to get a list of all Meshes: await parentDb.GetAllType("mesh", (err, docs) => {});
