@@ -28,6 +28,7 @@ module.exports.scripttask = function (parent) {
     obj.meshServer = parent.parent;
     obj.db = null;
     obj.intervalTimer = null;
+    obj.intervalMeshesTimer = null;
     obj.debug = obj.meshServer.debug;
     obj.dbg = function(category, message) {
         obj.debug('plugin:scripttask', category, message);
@@ -54,15 +55,25 @@ module.exports.scripttask = function (parent) {
         
     };
 
+    obj.resetTimers = function() {
+        obj.resetQueueTimer();
+        obj.resetMeshesQueueTimer();
+    };
+
     obj.resetQueueTimer = function() {
         clearTimeout(obj.intervalTimer);
         obj.intervalTimer = setInterval(obj.queueRun, 1 * 60 * 1000); // every minute
+    };
+
+    obj.resetMeshesQueueTimer = function() {
+        clearTimeout(obj.intervalMeshesTimer);
+        obj.intervalMeshesTimer = setInterval(obj.processSchedulesForMeshes, 1 * 60 * 1000); // every minute
     };
     
     obj.server_startup = function() {
         obj.meshServer.pluginHandler.scripttask_db = require (__dirname + '/db.js').CreateDB(obj.meshServer);
         obj.db = obj.meshServer.pluginHandler.scripttask_db;
-        obj.resetQueueTimer();
+        obj.resetTimers();
     };
     
     obj.onDeviceRefreshEnd = function() {
@@ -858,7 +869,7 @@ module.exports.scripttask = function (parent) {
                     return obj.db.updateScriptJobName(scriptId, scripts[0].name);
                 })
                 .then(() => {
-                    obj.resetQueueTimer();
+                    obj.resetTimers();
                     obj.queueRun();
                     obj.updateFrontEnd({ 
                         scriptId: scriptId, 
