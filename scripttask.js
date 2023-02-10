@@ -82,8 +82,6 @@ module.exports.scripttask = function (parent) {
     };
     
     obj.onDeviceRefreshEnd = function() {
-        obj.dbg('onDeviceRefreshEnd; registering plugin tab');
-
         pluginHandler.registerPluginTab({
             tabTitle: 'ScriptTask',
             tabId: 'pluginScriptTask'
