@@ -418,14 +418,17 @@ function goAdvancedRun() {
     sWin.meshes = selectedMeshes;
 
     window.schedCallback = function(opts) {
+      const hasNodes = Array.isArray(opts.nodes);
+      const hasMeshes = Array.isArray(opts.meshes);
+
       const rpcArgs = { 
           'action': 'plugin', 
           'plugin': 'scripttask', 
-          'pluginaction': opts.selectedNode.length > 0 ? 'addScheduledJob' : 'addScheduledMeshJob', 
+          'pluginaction': hasNodes ? 'addScheduledJob' : 'addScheduledMeshJob', 
           'scriptId': opts.scriptId, 
           ...{
-            nodes: opts.selectedNode.length > 0 ? opts.nodes : undefined,
-            meshes: opts.selectedMeshes.length > 0 ? opts.meshes : undefined,
+            nodes: hasNodes ? opts.nodes : undefined,
+            meshes: hasMeshes ? opts.meshes : undefined,
           },
           'currentNodeId': parent.currentNode._id,
           'schedule': opts
