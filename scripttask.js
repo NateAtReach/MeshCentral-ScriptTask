@@ -269,7 +269,7 @@ module.exports.scripttask = function (parent) {
             
             try {
                 obj.dbg(`updating job metadata for job ${job._id.toString()}; set dispatchTime=${dispatchTime}, state: ${jobState.DISPATCHED}`);
-                
+
                 await obj.db.update(
                     job._id,
                     {
@@ -809,8 +809,13 @@ module.exports.scripttask = function (parent) {
               .catch(e => { console.log('PLUGIN: ScriptTask: Error creating new folder ', e.stack); });
             break;
             case 'delete':
-              obj.deleteElement(command);
-            break;
+                obj.deleteElement(command);
+
+                break;
+            case 'addScheduledMeshJob':
+                obj.dbg(`addScheduledMeshJob: ${JSON.stringify(command)}`);
+                
+                break;
             case 'addScheduledJob':
                 /* { 
                     scriptId: scriptId, 

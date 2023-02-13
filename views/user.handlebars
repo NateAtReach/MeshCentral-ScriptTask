@@ -268,6 +268,7 @@ var elementDragged = false;
 var dragCounter = 0;
 var draggedId = null;
 var nodesObj = {};
+var meshesSelected = [];
 var variables = [];
 var varScopes = { global: 'Global', script: 'Script', mesh: 'Mesh', node: 'Node' };
 
@@ -304,7 +305,7 @@ function updateNodesTable() {
       var item = {...parent.meshes[i], ...{}};
       if (item.mtype == 2) {
           let tpl = `<tr class="stNodeRow">
-            <td><label><input type="checkbox" onclick="selNodesByMesh(this);" value="${item._id}"> ${item.name}</label></td>
+            <td><label><input type="checkbox" name="meshes[]" onclick="selNodesByMesh(this);" value="${item._id}"> ${item.name}</label></td>
           </tr>`;
           nodeRowIns.insertAdjacentHTML('beforeend', tpl);
       }
@@ -329,14 +330,13 @@ function selNodesByTag(el) {
     return true;
 }
 function selNodesByMesh(el) {
-    var mid = el.value;
-    var allNodes = Q('mRunTbl').querySelectorAll('input[type="checkbox"][name="runOn[]"]');
-    var checked = false;
-    if (el.checked) checked = true;
-    allNodes.forEach(function(n) {
-        if (nodesObj[n.value].meshid == mid) n.checked = checked;      
-    });
-    return true;
+  const allMeshesSelected = Q('mRunTbl').querySelectorAll('input[type="checkbox"][name="meshes[]"]');
+
+  meshesSelected = allMeshesSelected
+    .filter(checkbox => checkbox.checked)
+    .map(checkbox => checkbox.value);
+
+  return true;
 }
 function selAllNodes(el) {
   var allNodes = Q('mRunTbl').querySelectorAll('input[type="checkbox"][name="runOn[]"]');
@@ -398,32 +398,53 @@ function goEdit() {
 }
 
 function goAdvancedRun() {
-  var cboxes = document.getElementsByName("runOn[]");
-  var sel = [];
-  
-  cboxes.forEach((n) => {
-      if (n.checked) sel.push(n.value);
-  });
-  if (sel.length == 0) {
-      parent.setDialogMode(2, "Oops!", 1, null, 'No machines have been selected.'); 
-      return;
+  const selectedNodes = document
+    .getElementsByName("runOn[]")
+    .filter(checkbox => checkbox.checked)
+    .map(checkbox => checkbox.value);
+
+  const selectedMeshes = document
+    .getElementsByName("meshes[]")
+    .filter(checkbox => checkbox.checked)
+    .map(checkbox => checkbox.value);
+
+  console.log('goAdvancedRun', { selectedNodes, selectedMeshes });
+
+  if (selectedNodes.length < 1 && selectedMeshes.length < 1) {
+    parent.setDialogMode(2, "Oops!", 1, null, 'No machines have been selected.'); 
+    return;
   }
+
+  if(selectedNodes.length > 0 && selectedMeshes.length > 0) {
+    parent.setDialogMode(2, "Oops!", 1, null, 'Both individual machines *and* meshes selected. You must select either individual nodes *or* meshes.'); 
+    return;
+  }
+  
   var selScript = document.querySelectorAll('.liselected');
   if (selScript.length) {
     var scriptId = selScript[0].getAttribute('x-data-id');
     var sWin = window.open('/pluginadmin.ashx?pin=scripttask&user=1&schedule=1', 'schedule', "width=800,height=600");
     sWin.scriptId = scriptId;
-    sWin.nodes = sel;
+    sWin.nodes = selectedNodes;
+    sWin.meshes = selectedMeshes;
+
     window.schedCallback = function(opts) {
-        parent.meshserver.send({ 
-            'action': 'plugin', 
-            'plugin': 'scripttask', 
-            'pluginaction': 'addScheduledJob', 
-            'scriptId': opts.scriptId, 
-            'nodes': opts.nodes, 
-            'currentNodeId': parent.currentNode._id,
-            'schedule': opts
-        });
+      const rpcArgs = { 
+          'action': 'plugin', 
+          'plugin': 'scripttask', 
+          'pluginaction': opts.selectedNode.length > 0 ? 'addScheduledJob' : 'addScheduledMeshJob', 
+          'scriptId': opts.scriptId, 
+          ...{
+            nodes: opts.selectedNode.length > 0 ? opts.nodes : undefined,
+            meshes: opts.selectedMeshes.length > 0 ? opts.meshes : undefined,
+          },
+          'currentNodeId': parent.currentNode._id,
+          'schedule': opts
+      };
+
+      console.log('goAdvancedRun.schedCallback', { opts, rpcArgs });
+
+      parent.meshserver.send(rpcArgs);
     };
   } else {
     parent.setDialogMode(2, "Oops!", 1, null, 'No script has been selected to run on the machines.'); 
