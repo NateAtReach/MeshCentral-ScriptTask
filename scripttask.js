@@ -406,8 +406,12 @@ module.exports.scripttask = function (parent) {
 
         switch (s.recur) {
             case 'once':
-                if (s.nextRun == null) nextTime = s.startAt;
-                else nextTime = null;
+                if (s.nextRun == null) {
+                    nextTime = s.startAt;
+                }
+                else {
+                    nextTime = null;
+                }
             break;
             case 'minutes':
                 /*var lRun = s.nextRun || nowTime;
@@ -566,8 +570,6 @@ module.exports.scripttask = function (parent) {
                     obj.dbg(`processing schedule (id=${scheduleId}) on mesh ${schedule.mesh} with ${nodesInMesh.length} node(s)`);
                     
                     for(const node of nodesInMesh) {
-                        obj.dbg(`do node: ${node}`);
-
                         const nodeId = node._id.toString();
 
                         const incompleteJobs = await obj.db.getIncompleteJobsForSchedule(schedule._id, nodeId);
@@ -577,6 +579,8 @@ module.exports.scripttask = function (parent) {
 
                             continue;
                         }
+
+                        obj.dbg(`scheduled task (scheduleId=${scheduleId}, scriptName=${script.name}) on node ${nodeId}`);
 
                         await obj.db.addJob({
                             scriptId: schedule.scriptId,
@@ -595,6 +599,8 @@ module.exports.scripttask = function (parent) {
                     }
                 }
             } catch(e) {
+                obj.dbg(`ERROR: makeJobsFromMeshSchedules failed; reason=${e?.message || e?.toString() || 'UNKNOWN'}`)
+            } finally {
                 await obj.db.update(schedule._id, { nextRun: nextJobTime });
             }
         }
