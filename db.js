@@ -197,7 +197,7 @@ module.exports.CreateDB = function(meshserver) {
         obj.addMeshJobSchedule = function(schedObj) {
             schedObj.type = 'meshJobSchedule';
 
-            if (schedObj.node == null || schedObj.scriptId == null) {
+            if (schedObj.mesh == null || schedObj.scriptId == null) {
                 console.log('PLUGIN: SciptTask: Could not add mesh job schedule');
                 
                 return false;
