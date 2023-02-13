@@ -612,7 +612,10 @@ module.exports.scripttask = function (parent) {
                         [ schedule.mesh ],
                         undefined, //extrasids
                         "", //domain
-                        "node"
+                        "node",
+                        null, //id
+                        0, //skip
+                        2000000 //limit
                     );
 
                     obj.dbg(`todo: schedule (id=${schedule._id.toString()}) on mesh ${schedule.mesh}; typeof nodesInMesh: ${typeof nodesInMesh} (isArray=${Array.isArray(nodesInMesh)})`);
@@ -924,6 +927,7 @@ module.exports.scripttask = function (parent) {
                     nextRun: null,
                     type: "meshJobSchedule"
                 };
+
                 var sel = command.meshes;
                 var proms = [];
                 if (Array.isArray(sel)) {
