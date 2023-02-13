@@ -222,7 +222,8 @@ function goSave() {
         break;
     }
     o.scriptId = scriptId;
-    o.nodes = nodes;
+    o.nodes = nodes || undefined;
+    o.meshes = meshes || undefined;
     
     window.opener.schedCallback(o);
     window.close();
