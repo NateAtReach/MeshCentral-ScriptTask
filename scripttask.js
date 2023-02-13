@@ -583,6 +583,8 @@ module.exports.scripttask = function (parent) {
             return;
         }
 
+        let didCreateJobs = false;
+
         for(const schedule of schedules) {
             try {
                 const scheduleId = schedule._id.toString();
@@ -632,6 +634,8 @@ module.exports.scripttask = function (parent) {
 
                         obj.dbg(`scheduled task (scheduleId=${scheduleId}, scriptName=${script.name}) on node ${nodeId}`);
 
+                        didCreateJobs = true;
+
                         await obj.db.addJob({
                             scriptId: schedule.scriptId,
                             scriptName: script.name,
@@ -653,6 +657,10 @@ module.exports.scripttask = function (parent) {
             } finally {
                 await obj.db.update(schedule._id, { nextRun: nextJobTime });
             }
+        }
+
+        if(didCreateJobs) {
+            obj.queueRun();
         }
     };
 
