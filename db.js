@@ -242,9 +242,10 @@ module.exports.CreateDB = function(meshserver) {
             if (scheduleId != null) {
                 scheduleIdLimiter._id = scheduleId;
             }
+
             return obj.scriptFile.find( { 
                 type: type || 'jobSchedule',
-                // startAt: { $gte: nowTime },
+                state: 1, //scheduled
                 $or: [
                     { endAt: null },
                     { endAt: { $lte: nowTime } }
