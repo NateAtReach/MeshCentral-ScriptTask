@@ -574,6 +574,9 @@ module.exports.scripttask = function (parent) {
     obj.makeJobsFromMeshSchedules = async function(scheduleId) {
         obj.dbg('makeJobsFromMeshSchedules');
 
+        //run the queue to make sure due jobs are run
+        obj.queueRun();
+
         /** @type Array.<MeshJobSchedule> */
         const schedules = await obj.db.getSchedulesDueForJob(scheduleId, 'meshJobSchedule');
 

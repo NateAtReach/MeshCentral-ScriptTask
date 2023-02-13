@@ -251,7 +251,7 @@ module.exports.CreateDB = function(meshserver) {
                 ],
                 $or: [
                     { nextRun: null }, 
-                    { nextRun: { $lte: (nowTime + 60) } } // check a minute into the future
+                    { nextRun: { $lte: nowTime } }
                 ],
                 ...scheduleIdLimiter
             }).toArray();
