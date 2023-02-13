@@ -935,7 +935,7 @@ module.exports.scripttask = function (parent) {
                             var sObj = {
                                 ...scheduleTemplate,
                                 mesh: meshId,
-                                target: mesh ? `Mesh: ${mesh}` : 'Unknown Mesh',
+                                target: mesh?.name ? `Mesh: ${mesh.name}` : 'Unknown Mesh',
                             };
         
                             obj.dbg(`adding mesh job schedule: ${JSON.stringify(sObj)}`);
