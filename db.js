@@ -245,7 +245,6 @@ module.exports.CreateDB = function(meshserver) {
 
             return obj.scriptFile.find( { 
                 type: type || 'jobSchedule',
-                state: 1, //scheduled
                 $or: [
                     { endAt: null },
                     { endAt: { $lte: nowTime } }
@@ -337,6 +336,7 @@ module.exports.CreateDB = function(meshserver) {
         obj.getIncompleteJobsForSchedule = function (schedId, nodeId) {
             return obj.scriptFile.find({
                 type: 'job',
+                state: 1, //scheduled
                 jobSchedule: schedId,
                 completeTime: null,
                 ...(nodeId ? { node: nodeId } : undefined),
