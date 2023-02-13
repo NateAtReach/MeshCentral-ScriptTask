@@ -305,7 +305,7 @@ function updateNodesTable() {
       var item = {...parent.meshes[i], ...{}};
       if (item.mtype == 2) {
           let tpl = `<tr class="stNodeRow">
-            <td><label><input type="checkbox" name="meshes[]" onclick="selNodesByMesh(this);" value="${item._id}"> ${item.name}</label></td>
+            <td><label><input type="checkbox" name="meshes[]" value="${item._id}"> ${item.name}</label></td>
           </tr>`;
           nodeRowIns.insertAdjacentHTML('beforeend', tpl);
       }
@@ -329,15 +329,7 @@ function selNodesByTag(el) {
     });
     return true;
 }
-function selNodesByMesh(el) {
-  const allMeshesSelected = Q('mRunTbl').querySelectorAll('input[type="checkbox"][name="meshes[]"]');
 
-  meshesSelected = allMeshesSelected
-    .filter(checkbox => checkbox.checked)
-    .map(checkbox => checkbox.value);
-
-  return true;
-}
 function selAllNodes(el) {
   var allNodes = Q('mRunTbl').querySelectorAll('input[type="checkbox"][name="runOn[]"]');
   var checked = false;
@@ -398,13 +390,11 @@ function goEdit() {
 }
 
 function goAdvancedRun() {
-  const selectedNodes = document
-    .getElementsByName("runOn[]")
+  const selectedNodes = Array.from(document.getElementsByName("runOn[]"))
     .filter(checkbox => checkbox.checked)
     .map(checkbox => checkbox.value);
 
-  const selectedMeshes = document
-    .getElementsByName("meshes[]")
+  const selectedMeshes = Array.from(document.getElementsByName("meshes[]"))
     .filter(checkbox => checkbox.checked)
     .map(checkbox => checkbox.value);
 
