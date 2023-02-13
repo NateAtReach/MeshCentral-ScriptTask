@@ -69,12 +69,28 @@ module.exports.scripttask = function (parent) {
 
     obj.resetQueueTimer = function() {
         clearTimeout(obj.intervalTimer);
-        obj.intervalTimer = setInterval(obj.queueRun, 1 * 60 * 1000); // every minute
+
+        //run once at 500 ms after the top of the minute
+        const seconds = new Date().getSeconds();
+        obj.intervalTimer = setTimeout(() => {
+            //run every minute
+            obj.intervalTimer = setInterval(obj.queueRun, 60000);
+
+            obj.queueRun();
+        }, (60.5 - seconds) * 1000);
     };
 
     obj.resetMeshesQueueTimer = function() {
         clearTimeout(obj.intervalMeshesTimer);
-        obj.intervalMeshesTimer = setInterval(obj.processSchedulesForMeshes, 1 * 60 * 1000); // every minute
+
+        //run once at 1 second after the top of the minute
+        const seconds = new Date().getSeconds();
+        obj.intervalMeshesTimer = setTimeout(() => {
+            //run every minute
+            obj.intervalMeshesTimer = setInterval(obj.processSchedulesForMeshes, 60000);
+
+            obj.processSchedulesForMeshes();
+        }, (61 - seconds) * 1000);
     };
     
     obj.server_startup = function() {
