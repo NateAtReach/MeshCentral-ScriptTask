@@ -440,8 +440,8 @@ function consoleaction(args, rights, sessionid, parent) {
     var fnname = args['_'][1];
     mesh = parent;
 
-    startJobQueueHealthCheck();
     setupPluginDataFolder();
+    startJobQueueHealthCheck();
     cleanLogFolder();
     
     switch (fnname) {
