@@ -220,7 +220,7 @@
           <div class="infoBar">Script Schedules</div>
           <div id="sSch" class="infoContent">
               <table id="sSchTbl" cellspacing="0" cellpadding="0">
-                  <th>Node</th><th>Author</th><th>Every</th><th>Starting</th><th>Ending</th><th>Last Run</th><th>Next Run</th><th>Action</th>
+                  <th>Target</th><th>Author</th><th>Every</th><th>Starting</th><th>Ending</th><th>Last Run</th><th>Next Run</th><th>Action</th>
               </table>
           </div>
         <div class="infoBar">Node History</div>
@@ -525,6 +525,7 @@ function redrawScriptTree() {
       parent.nodes.forEach(function(n){ 
          nNames[n._id] = n.name; 
       });
+
       if (message.event.nodeHistory != null && message.event.nodeId == parent.currentNode._id) {
           var nHistTbl = document.getElementById('nHistTbl');
           var rows = nHistTbl.querySelectorAll('.stNHRow');
@@ -551,6 +552,7 @@ function redrawScriptTree() {
               });
           }
       }
+      
       var currentScript = document.getElementById('scriptHistory');
       var currentScriptId = currentScript.getAttribute('x-data-id');
       if (message.event.scriptHistory != null && message.event.scriptId == currentScriptId) {
@@ -733,7 +735,7 @@ function redrawScriptTree() {
           if (message.event.scriptSchedule.length) {
               message.event.scriptSchedule.forEach(function(nh) {
                   nh = prepSchedule(nh);
-                  let tpl = '<td>' + nNames[nh.node] + '</td> \
+                  let tpl = '<td>' + nNames[nh.target] + '</td> \
                     <td>' + nh.scheduledBy + '</td> \
                     <td>' + nh.everyTxt + '</td> \
                     <td>' + nh.startedTxt + '</td> \

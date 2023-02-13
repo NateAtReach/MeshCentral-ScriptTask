@@ -48,8 +48,18 @@ module.exports.scripttask = function (parent) {
     ];
 
     const parentDb = {
+        /**
+         * function (type, func)
+         */
         GetAllType: util.promisify(obj.meshServer.db.GetAllType),
+        /**
+         * function (meshes, extrasids, domain, type, id, skip, limit, func)
+         */
         GetAllTypeNoTypeFieldMeshFiltered: util.promisify(obj.meshServer.db.GetAllTypeNoTypeFieldMeshFiltered),
+        /**
+         * function (nodes, domain, type, id, func)
+         */
+        GetAllTypeNodeFiltered: util.promisify(obj.meshServer.db.GetAllTypeNodeFiltered),
     };
     
     obj.malix_triggerOption = function(selectElem) {
@@ -273,7 +283,7 @@ module.exports.scripttask = function (parent) {
                     scriptHistory = sh;
                     return obj.db.getJobSchedulesForScript(ids.scriptId);
                 })
-                .then((/** @type Array.<JobSchedule> */ scriptSchedule) => {
+                .then((/** @type Array.<JobSchedule|MeshJobSchedule> */ scriptSchedule) => {
                     var targets = ['*', 'server-users'];
                     obj.meshServer.DispatchEvent(
                         targets,
@@ -430,53 +440,75 @@ module.exports.scripttask = function (parent) {
                 }
             break;
             case 'minutes':
-                /*var lRun = s.nextRun || nowTime;
-                if (lRun == null) lRun = nowTime;
-                nextTime = lRun + (s.interval * 60);
-                if (s.startAt > nextTime) nextTime = s.startAt;*/
+            {
+                const oneInterval = s.interval * 60;
+
                 if (s.nextRun == null) { // hasn't run yet, set to start time
                     nextTime = s.startAt;
                     break;
                 }
-                nextTime = s.nextRun + (s.interval * 60);
+                
+                nextTime = s.nextRun + oneInterval;
+
                 // this prevents "catch-up" tasks being scheduled if an endpoint is offline for a long period of time
                 // e.g. always make sure the next scheduled time is relevant to the scheduled interval, but in the future
-                if (nextTime < nowTime) {
+                if (nextTime < nowTime - oneInterval) {
                     // initially I was worried about this causing event loop lockups
                     // if there was a long enough time gap. Testing over 50 years of backlog for a 3 min interval
                     // still ran under a fraction of a second. Safe to say this approach is safe! (~8.5 million times)
                     while (nextTime < nowTime) {
-                        nextTime = nextTime + (s.interval * 60);
+                        nextTime = nextTime + oneInterval;
                     }
                 }
-                if (s.startAt > nextTime) nextTime = s.startAt;
-            break;
+
+                if (s.startAt > nextTime) {
+                    nextTime = s.startAt;
+                }
+                break;
+            }
             case 'hourly':
+            {
+                const oneInterval = s.interval * 60 * 60;
+
                 if (s.nextRun == null) { // hasn't run yet, set to start time
                     nextTime = s.startAt;
                     break;
                 }
-                nextTime = s.nextRun + (s.interval * 60 * 60);
-                if (nextTime < nowTime) {
+                nextTime = s.nextRun + oneInterval;
+                if (nextTime < nowTime - oneInterval) {
                     while (nextTime < nowTime) {
-                        nextTime = nextTime + (s.interval * 60 * 60);
+                        nextTime = nextTime + oneInterval;
                     }
                 }
-                if (s.startAt > nextTime) nextTime = s.startAt;
-            break;
+
+                if (s.startAt > nextTime) {
+                    nextTime = s.startAt;
+                }
+
+                break;
+            }
             case 'daily':
+            {
+                const oneInterval = s.interval * 60 * 60 * 24;
+
                 if (s.nextRun == null) { // hasn't run yet, set to start time
                     nextTime = s.startAt;
                     break;
                 }
-                nextTime = s.nextRun + (s.interval * 60 * 60 * 24);
-                if (nextTime < nowTime) {
+
+                nextTime = s.nextRun + oneInterval;
+                if (nextTime < nowTime - oneInterval) {
                     while (nextTime < nowTime) {
-                        nextTime = nextTime + (s.interval * 60 * 60 * 24);
+                        nextTime = nextTime + oneInterval;
                     }
                 }
-                if (s.startAt > nextTime) nextTime = s.startAt;
-            break;
+
+                if (s.startAt > nextTime) {
+                    nextTime = s.startAt;
+                }
+
+                break;
+            }
             case 'weekly':
                 var tempDate = new Date();
                 var nowDate = new Date(tempDate.getFullYear(), tempDate.getMonth(), tempDate.getDate());
@@ -532,7 +564,9 @@ module.exports.scripttask = function (parent) {
             break;
         }
         
-        if (s.endAt != null && nextTime > s.endAt) nextTime = null; // if the next time reaches the bound of the endAt time, nullify
+        if (s.endAt != null && nextTime > s.endAt) {
+            nextTime = null; // if the next time reaches the bound of the endAt time, nullify
+        }
         
         return nextTime;
     };
@@ -859,12 +893,13 @@ module.exports.scripttask = function (parent) {
 
                 break;
             case 'addScheduledMeshJob':
+            {
                 obj.dbg(`addScheduledMeshJob: ${JSON.stringify(command)}`);
 
                 var sj = command.schedule;
                 
                 /** @type MeshJobSchedule */
-                var sched = {
+                var scheduleTemplate = {
                     scriptId: command.scriptId, 
                     mesh: null, 
                     scheduledBy: myparent.user.name,
@@ -878,29 +913,37 @@ module.exports.scripttask = function (parent) {
                     type: "meshJobSchedule"
                 };
 
-                var sel = command.meshes;
-                var proms = [];
-                if (Array.isArray(sel)) {
-                  sel.forEach((s) => {
-                    var sObj = {...sched, ...{
-                        mesh: s
-                    }};
+                var selectedMeshIds = command.meshes;
+                var toAwait = [];
+                if (Array.isArray(selectedMeshIds)) {
+                    /** @type Array.<Object> */
+                    const allMeshesPromise = parentDb.GetAllType("mesh");
 
-                    obj.dbg(`adding mesh job schedule: ${JSON.stringify(sObj)}`);
+                    for(const meshId of selectedMeshIds) {
+                        toAwait.push((async () => {
+                            const allMeshes = await allMeshesPromise;
+                            const mesh = allMeshes.find(mesh => mesh._id.toString() === meshId);
 
-                    proms.push((async () => {
-                        try {
-                            await obj.db.addMeshJobSchedule( sObj );
-                        } catch(e) {
-                            obj.dbg(`ERROR: ${e?.message || e?.toString() || 'UNKNOWN'}`);
-                        }
-                    })());
-                  });
+                            var sObj = {
+                                ...scheduleTemplate,
+                                mesh: meshId,
+                                target: mesh ? `Mesh: ${mesh}` : 'Unknown Mesh',
+                            };
+        
+                            obj.dbg(`adding mesh job schedule: ${JSON.stringify(sObj)}`);
+
+                            try {
+                                await obj.db.addMeshJobSchedule(sObj);
+                            } catch(e) {
+                                obj.dbg(`ERROR: ${e?.message || e?.toString() || 'UNKNOWN'}`);
+                            }
+                        })());
+                    }
                 } else {
-                    obj.dbg(`WARNING: obj.meshes was of unexpected type ${typeof sel} (isArray=${Array.isArray(sel)}). An array is required.`);
+                    obj.dbg(`WARNING: obj.meshes was of unexpected type ${typeof selectedMeshIds} (isArray=${Array.isArray(selectedMeshIds)}). An array is required.`);
                 }
 
-                Promise.all(proms)
+                Promise.all(toAwait)
                     .then(() => {
                         obj.makeJobsFromMeshSchedules();
 
@@ -909,66 +952,68 @@ module.exports.scripttask = function (parent) {
                     .catch(e => { console.log('PLUGIN: ScriptTask: Error adding schedules. The error was: ', e); });
 
                 break;
+            }
             case 'addScheduledJob':
-                /* { 
-                    scriptId: scriptId, 
-                    node: s, 
-                    scheduledBy: myparent.user.name,
-                    recur: command.recur, // [once, minutes, hourly, daily, weekly, monthly]
-                    interval: x,
-                    daysOfWeek: x, // only used for weekly recur val
-                    // onTheXDay: x, // only used for monthly
-                    startAt: x,
-                    endAt: x,
-                    runCountLimit: x,
-                    lastRun: x,
-                    nextRun: x,
-                    type: "scheduledJob"
-                } */
-                var sj = command.schedule;
+            {
+                const scheduleDefinition = command.schedule;
                 
                 /** @type JobSchedule */
-                var sched = {
+                const scheduleTemplate = {
                     scriptId: command.scriptId, 
                     node: null, 
                     scheduledBy: myparent.user.name,
-                    recur: sj.recur,
-                    interval: sj.interval,
-                    daysOfWeek: sj.dayVals,
-                    startAt: sj.startAt,
-                    endAt: sj.endAt,
+                    recur: scheduleDefinition.recur,
+                    interval: scheduleDefinition.interval,
+                    daysOfWeek: scheduleDefinition.dayVals,
+                    startAt: scheduleDefinition.startAt,
+                    endAt: scheduleDefinition.endAt,
                     lastRun: null,
                     nextRun: null,
-                    type: "jobSchedule"
+                    type: "jobSchedule",
+                    target: null,
                 };
-                var sel = command.nodes;
-                var proms = [];
-                if (Array.isArray(sel)) {
-                  sel.forEach((s) => {
-                    var sObj = {...sched, ...{
-                        node: s
-                    }};
-                    proms.push(obj.db.addJobSchedule( sObj ));
-                  });
-                } else { test.push(sObj);
-                    proms.push(obj.db.addJobSchedule( sObj ));
+
+                const selectedNodeIds = command.nodes;
+                const toAwait = [];
+                if (Array.isArray(selectedNodeIds)) {
+                    const allNodesPromise = parentDb.GetAllTypeNodeFiltered(selectedNodeIds, "", "node", null);
+
+                    for(const nodeId of selectedNodeIds) {
+                        toAwait.push((async () => {
+                            /** @type Array.<Object> */
+                            const allNodes = await allNodesPromise;
+                            const node = allNodes.find(node => node._id.toString() === nodeId);
+
+                            await obj.db.addJobSchedule({
+                                ...scheduleTemplate,
+                                node: nodeId,
+                                target: node?.name ? `Node: ${node.name}` : 'Unknown Node',
+                            });
+                        })());
+                    }
+                } else {
+                    obj.dbg(`WARNING: obj.nodes was of unexpected type ${typeof selectedNodeIds} (isArray=${Array.isArray(selectedNodeIds)}). An array is required.`);
                 }
 
-                Promise.all(proms)
+                Promise.all(toAwait)
                     .then(() => {
                         obj.makeJobsFromSchedules();
+
                         return Promise.resolve();
                     })
-                    .catch(e => { console.log('PLUGIN: ScriptTask: Error adding schedules. The error was: ', e); });
+                    .catch(e => {
+                        obj.dgb(`ERROR: failed to add schedules. Reason: ${e?.message || e?.toString() || 'UNKNOWN'}`);
+                    });
 
                 break;
+            }
             case 'runScript':
               var scriptId = command.scriptId;
-              var sel = command.nodes;
-              var proms = [];
-              if (Array.isArray(sel)) {
-                sel.forEach((s) => {
-                  proms.push(
+              var selectedMeshIds = command.nodes;
+              var toAwait = [];
+              if (Array.isArray(selectedMeshIds)) {
+                selectedMeshIds.forEach((s) => {
+                  toAwait.push(
                     obj.db.addJob({ 
                         scriptId: scriptId, 
                         node: s, 
@@ -978,17 +1023,17 @@ module.exports.scripttask = function (parent) {
                 );
                 });
               } else {
-                proms.push(
+                toAwait.push(
                     obj.db.addJob({
                         scriptId: scriptId,
-                        node: sel,
+                        node: selectedMeshIds,
                         runBy: myparent.user.name,
                         state: jobState.SCHEDULED,
                     })
                 );
               }
 
-              Promise.all(proms)
+              Promise.all(toAwait)
                 .then(() => {
                     return obj.db.get(scriptId);
                 })

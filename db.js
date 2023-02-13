@@ -43,6 +43,7 @@
  * @property {number} endAt - UTC millis of when the schedule ends
  * @property {number} lastRun - UTC millis of the last execution of this schedule
  * @property {number} nextRun - UTC millis of the next time to run the schedule
+ * @property {string} target - scheduling tartget (e.g. "Jane Doe's Laptop" or "Mesh: IT-Test")
  */
 
 /**
@@ -60,6 +61,7 @@
  * @property {number} endAt - UTC millis of when the schedule ends
  * @property {number} lastRun - UTC millis of the last execution of this schedule
  * @property {number} nextRun - UTC millis of the next time to run the schedule
+ * @property {string} target - scheduling tartget (e.g. "Jane Doe's Laptop" or "Mesh: IT-Test")
  */
 
 /**
@@ -312,10 +314,13 @@ module.exports.CreateDB = function(meshserver) {
         /**
          * 
          * @param {string} scriptId 
-         * @returns {Promise.<Array.<JobSchedule>>}
+         * @returns {Promise.<Array.<JobSchedule|MeshJobSchedule>>}
          */
         obj.getJobSchedulesForScript = function(scriptId) {
-            return obj.scriptFile.find( { type: 'jobSchedule', scriptId: scriptId } ).toArray();
+            return obj.scriptFile.find({
+                type: { '$in': ['jobSchedule', 'meshJobSchedule'] },
+                scriptId: scriptId
+            }).toArray();
         };
 
         obj.getJobSchedulesForNode = function (nodeId) {
