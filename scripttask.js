@@ -932,8 +932,18 @@ module.exports.scripttask = function (parent) {
                         mesh: s
                     }};
 
-                    proms.push(obj.db.addMeshJobSchedule( sObj ));
+                    obj.dbg(`adding mesh job schedule: ${JSON.stringify(sObj)}`);
+
+                    proms.push((async () => {
+                        try {
+                            await obj.db.addMeshJobSchedule( sObj );
+                        } catch(e) {
+                            obj.dbg(`ERROR: ${e?.message || e?.toString() || 'UNKNOWN'}`);
+                        }
+                    })());
                   });
+                } else {
+                    obj.dbg(`WARNING: obj.meshes was of unexpected type ${typeof sel} (isArray=${Array.isArray(sel)}). An array is required.`);
                 }
 
                 Promise.all(proms)
