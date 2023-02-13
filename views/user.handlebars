@@ -735,7 +735,7 @@ function redrawScriptTree() {
           if (message.event.scriptSchedule.length) {
               message.event.scriptSchedule.forEach(function(nh) {
                   nh = prepSchedule(nh);
-                  let tpl = '<td>' + nNames[nh.target] + '</td> \
+                  let tpl = '<td>' + nh.target + '</td> \
                     <td>' + nh.scheduledBy + '</td> \
                     <td>' + nh.everyTxt + '</td> \
                     <td>' + nh.startedTxt + '</td> \
