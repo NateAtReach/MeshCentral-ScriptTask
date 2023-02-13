@@ -19,6 +19,10 @@ const util = require('util');
  */
 
 /**
+ * @typedef {import('./db.js').MeshJobSchedule} MeshJobSchedule
+ */
+
+/**
  * @typedef {import('./db.js').Script} Script
  */
 
@@ -454,6 +458,11 @@ module.exports.scripttask = function (parent) {
         if (typeof pluginHandler.scripttask.loadVariables == 'function') pluginHandler.scripttask.loadVariables(message);
     };
     
+    /**
+     * 
+     * @param {JobSchedule|MeshJobSchedule} s 
+     * @returns {number|null}
+     */
     obj.determineNextJobTime = function(s) {
         var nextTime = null;
         var nowTime = Math.floor(new Date() / 1000);
@@ -553,7 +562,7 @@ module.exports.scripttask = function (parent) {
                     var d = new Date(0); d.setUTCSeconds(checkDate);
                     var dm = new Date(d.getFullYear(), d.getMonth(), d.getDate());
                     
-                    console.log('testing date: ', dm.toLocaleString()); // dMidnight.toLocaleString());
+                    //console.log('testing date: ', dm.toLocaleString()); // dMidnight.toLocaleString());
                     //console.log('if break check :', (s.daysOfWeek.indexOf(d.getDay()) !== -1 && checkDate >= nowTime));
                     //console.log('checkDate vs nowTime: ', (checkDate - nowTime), ' if positive, nowTime is less than checkDate');
                     if (s.nextRun == null && s.daysOfWeek.indexOf(dm.getDay()) !== -1 && dm.getTime() >= nowDate.getTime()) break;
@@ -574,6 +583,90 @@ module.exports.scripttask = function (parent) {
         if (s.endAt != null && nextTime > s.endAt) nextTime = null; // if the next time reaches the bound of the endAt time, nullify
         
         return nextTime;
+    };
+
+    obj.makeJobsFromMeshSchedules = async function(scheduleId) {
+        obj.dbg('makeJobsFromMeshSchedules');
+
+        /** @type Array.<MeshJobSchedule> */
+        const schedules = await obj.db.getSchedulesDueForJob(scheduleId, 'meshJobSchedule');
+
+        obj.dbg('found ' + schedules.length + ' schedules to process');
+
+        if (schedules.length) {
+            for(const schedule of schedules) {
+                obj.dbg(`processing mesh job schedule (scheduleId=${schedule._id.toString()})`);
+
+                var nextJobTime = obj.determineNextJobTime(schedule);
+
+                obj.dbg(`schedule ${schedule._id.toString()} nextJobTime is ${nextJobTime}`);
+
+                var nextJobScheduled = false;
+
+                if (nextJobTime === null) {
+                    obj.dbg(`job schedule has ended, removing schedule from database (scheduleId=${schedule._id.toString()})`);
+
+                    obj.db.removeJobSchedule(schedule._id);
+                } else {
+                    const nodesInMesh = await parentDb.GetAllTypeNoTypeFieldMeshFiltered(
+                        [ schedule.mesh ],
+                        undefined, //extrasids
+                        "", //domain
+                        "node"
+                    );
+
+                    obj.dbg(`todo: schedule (id=${schedule._id.toString()}) on mesh ${schedule.mesh}; typeof nodesInMesh: ${typeof nodesInMesh} (isArray=${Array.isArray(nodesInMesh)})`);
+                    //1.) get all nodes part of mesh
+                    //2.) for each node
+                    //  * check if there is a pending job for this schedule Id for this node
+                    //  * if not, schedule a new job for this node
+
+                    // //obj.debug('ScriptTask', 'Scheduling Job for', JSON.stringify(s));
+                    // obj.db.get(s.scriptId)
+                    //     .then((/** @type Array.<Script> */ scripts) => {
+                    //         // if a script is scheduled to run, but a previous run hasn't completed, 
+                    //         // don't schedule another job for the same (device probably offline).
+                    //         // results in the minimum jobs running once an agent comes back online.
+                    //         return obj.db.getIncompleteJobsForSchedule(s._id)
+                    //             .then((jobs) => {
+                    //                 if (jobs.length > 0) {
+                    //                     /* obj.debug('Plugin', 'ScriptTask', 'Skipping job creation'); */
+                    //                     return Promise.resolve();
+                    //                 } else {
+                    //                     /* obj.debug('Plugin', 'ScriptTask', 'Creating new job'); */
+                    //                     nextJobScheduled = true;
+
+                    //                     return obj.db.addJob({
+                    //                         scriptId: s.scriptId,
+                    //                         scriptName: scripts[0].name,
+                    //                         node: s.node,
+                    //                         runBy: s.scheduledBy,
+                    //                         dontQueueUntil: nextJobTime,
+                    //                         jobSchedule: s._id,
+                    //                         state: jobState.SCHEDULED,
+                    //                     });
+                    //                 }
+                    //             });
+                    //     })
+                    //     .then(() => {
+                    //         if (nextJobScheduled) {
+                    //             /* obj.debug('Plugin', 'ScriptTask', 'Updating nextRun time'); */
+                    //             return obj.db.update(s._id, { nextRun: nextJobTime });
+                    //         } else {
+                    //             /* obj.debug('Plugin', 'ScriptTask', 'NOT updating nextRun time'); */
+                    //             return Promise.resolve();
+                    //         }
+                    //     })
+                    //     .then(() => {
+                    //         obj.updateFrontEnd({
+                    //             scriptId: s.scriptId,
+                    //             nodeId: s.node
+                    //         });
+                    //     })
+                    //     .catch((e) => { console.log('PLUGIN: ScriptTask: Error managing job schedules: ', e); });
+                }
+            }
+        }
     };
 
     obj.makeJobsFromSchedules = function(scheduleId) {
@@ -814,7 +907,43 @@ module.exports.scripttask = function (parent) {
                 break;
             case 'addScheduledMeshJob':
                 obj.dbg(`addScheduledMeshJob: ${JSON.stringify(command)}`);
+
+                var sj = command.schedule;
                 
+                /** @type MeshJobSchedule */
+                var sched = {
+                    scriptId: command.scriptId, 
+                    mesh: null, 
+                    scheduledBy: myparent.user.name,
+                    recur: sj.recur,
+                    interval: sj.interval,
+                    daysOfWeek: sj.dayVals,
+                    startAt: sj.startAt,
+                    endAt: sj.endAt,
+                    lastRun: null,
+                    nextRun: null,
+                    type: "meshJobSchedule"
+                };
+                var sel = command.meshes;
+                var proms = [];
+                if (Array.isArray(sel)) {
+                  sel.forEach((s) => {
+                    var sObj = {...sched, ...{
+                        mesh: s
+                    }};
+
+                    proms.push(obj.db.addMeshJobSchedule( sObj ));
+                  });
+                }
+
+                Promise.all(proms)
+                    .then(() => {
+                        obj.makeJobsFromMeshSchedules();
+
+                        return Promise.resolve();
+                    })
+                    .catch(e => { console.log('PLUGIN: ScriptTask: Error adding schedules. The error was: ', e); });
+
                 break;
             case 'addScheduledJob':
                 /* { 

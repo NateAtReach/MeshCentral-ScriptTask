@@ -46,6 +46,23 @@
  */
 
 /**
+ * A mesh-based job execution schedule
+ * @typedef {Object} MeshJobSchedule
+ * @property {ObjectID} _id - mongo ID
+ * @property {'meshJobSchedule'} type - type discriminator
+ * @property {string} scriptId - id of the script
+ * @property {string} mesh - mesh the script is scheduled on
+ * @property {string} scheduledBy - who made the schedule
+ * @property {'once'|'minutes'|'hourly'|'daily'|'weekly'} recur - recurrence basis
+ * @property {number} interval - recurrence interval
+ * @property {unknown} daysOfWeek - which days of the week to run on
+ * @property {number} startAt - UTC millis of when the schedule begins
+ * @property {number} endAt - UTC millis of when the schedule ends
+ * @property {number} lastRun - UTC millis of the last execution of this schedule
+ * @property {number} nextRun - UTC millis of the next time to run the schedule
+ */
+
+/**
  * A script
  * @typedef {Object} Script
  * @property {ObjectID} _id - mongo ID
@@ -177,6 +194,18 @@ module.exports.CreateDB = function(meshserver) {
           return obj.scriptFile.insertOne(jObj);
         };
 
+        obj.addMeshJobSchedule = function(schedObj) {
+            schedObj.type = 'meshJobSchedule';
+
+            if (schedObj.node == null || schedObj.scriptId == null) {
+                console.log('PLUGIN: SciptTask: Could not add mesh job schedule');
+                
+                return false;
+            }
+
+            return obj.scriptFile.insertOne(schedObj);
+        };
+
         obj.addJobSchedule = function(schedObj) {
             schedObj.type = 'jobSchedule';
 
@@ -200,16 +229,17 @@ module.exports.CreateDB = function(meshserver) {
          * If scheduleId is provided, limits results to that specific schedule.
          * 
          * @param {string|undefined} scheduleId - mongo DB _id for schedule
+         * @param {'jobSchedule'|'meshJobSchedule'|undefined} - type of schedule to search. Default: jobSchedule
          * @returns {Promise.<Array.<JobSchedule>>}
          */
-        obj.getSchedulesDueForJob = function(scheduleId) {
+        obj.getSchedulesDueForJob = function(scheduleId, type) {
             var nowTime = Math.floor(new Date() / 1000);
             var scheduleIdLimiter = {};
             if (scheduleId != null) {
                 scheduleIdLimiter._id = scheduleId;
             }
             return obj.scriptFile.find( { 
-                type: 'jobSchedule',
+                type: type || 'jobSchedule',
                 // startAt: { $gte: nowTime },
                 $or: [
                     { endAt: null },
