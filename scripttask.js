@@ -114,75 +114,7 @@ module.exports.scripttask = function (parent) {
     obj.processSchedulesForMeshes = async () => {
         obj.dbg('running processSchedulesForMeshes @ ' + Date.now());
 
-        /*
-            to get a list of all Meshes: await parentDb.GetAllType("mesh", (err, docs) => {});
-            to get a list of nodes in a mesh: await parentDb.GetAllTypeNoTypeFieldMeshFiltered(
-                [ meshId ],
-                undefined, //extrasids
-                "", //domain
-                "node"
-            )
-        */
-        /*
-            type: mesh
-
-            {
-                "_id":"mesh//1EMLwzC@5u@SG@3vJ7KVnO@gCkoX$QDw4yorhgt4dXL4ucV2uXWC22j6o7BQJJlU",
-                "type":"mesh",
-                "name":"REACH Employees",
-                "mtype":2,
-                "desc":"",
-                "domain":"",
-                "links":{
-                    "user//itsupervisor@reachmedianetwork%2Ecom":{
-                        "name":"itsupervisor@reachmedianetwork.com",
-                        "rights":4294967295
-                    },
-                    "user//~azure:NDavis@reachmedianetwork%2Ecom":{
-                        "name":"Nathan Davis",
-                        "rights":4294967295
-                    },
-                    "user//~azure:PHarrison@reachmedianetwork%2Ecom":{
-                        "name":"Patrick Harrison",
-                        "rights":4294967295
-                    }
-                },
-                "creation":1613484643406,
-                "creatorid":"user//ndavis@reachmedianetwork.com",
-                "creatorname":"ndavis@reachmedianetwork.com"
-            }
-        */
-
-        /*
-            type: node
-
-            {
-                "_id":"node//mq35c2A8XMT6Zd3tKarU0kqS1nJxv1mY9xKdiALw@lGJ@2qvQEQuDsJbCHzF@jFz",
-                "type":"node",
-                "mtype":2,
-                "icon":8,
-                "meshid":"mesh//qYUffMTDO3oDC9h7fbW5Udag77VxCM8wPVB2k4SLqC@qScX05yS07na4prkPZ0Pr",
-                "name":"nuget",
-                "rname":"nuget",
-                "domain":"",
-                "agent":{
-                    "ver":0,
-                    "id":4,
-                    "caps":31,
-                    "root":true,
-                    "core":"Nov 19 2022, 2683833051"
-                },
-                "host":null,
-                "ip":"192.168.50.1",
-                "osdesc":"Microsoft Windows Server 2019 Standard - 17763",
-                "av":[
-                    
-                ],
-                "users":[
-                    
-                ]
-            }
-        */
+        await obj.makeJobsFromMeshSchedules();
     };
     
     obj.queueRun = async function() {
@@ -593,21 +525,34 @@ module.exports.scripttask = function (parent) {
 
         obj.dbg('found ' + schedules.length + ' schedules to process');
 
-        if (schedules.length) {
-            for(const schedule of schedules) {
-                obj.dbg(`processing mesh job schedule (scheduleId=${schedule._id.toString()})`);
+        if(schedules.length < 1) {
+            return;
+        }
+
+        for(const schedule of schedules) {
+            try {
+                const scheduleId = schedule._id.toString();
+
+                obj.dbg(`processing mesh job schedule (scheduleId=${scheduleId})`);
 
                 var nextJobTime = obj.determineNextJobTime(schedule);
 
-                obj.dbg(`schedule ${schedule._id.toString()} nextJobTime is ${nextJobTime}`);
-
-                var nextJobScheduled = false;
+                obj.dbg(`schedule ${scheduleId} nextJobTime is ${nextJobTime}`);
 
                 if (nextJobTime === null) {
-                    obj.dbg(`job schedule has ended, removing schedule from database (scheduleId=${schedule._id.toString()})`);
+                    obj.dbg(`job schedule has ended, removing schedule from database (scheduleId=${scheduleId})`);
 
                     obj.db.removeJobSchedule(schedule._id);
                 } else {
+                    /** @type {Array.<Script>} */
+                    const scripts = await obj.db.get(schedule.scriptId);
+
+                    if(scripts.length != 1) {
+                        obj.dbg(`ERROR: failed to get script ${s.scriptId}; received ${script.length} record(s) but exactly 1 was expected`);
+                    }
+
+                    const script = scripts[0];
+
                     const nodesInMesh = await parentDb.GetAllTypeNoTypeFieldMeshFiltered(
                         [ schedule.mesh ],
                         undefined, //extrasids
@@ -618,56 +563,39 @@ module.exports.scripttask = function (parent) {
                         2000000 //limit
                     );
 
-                    obj.dbg(`todo: schedule (id=${schedule._id.toString()}) on mesh ${schedule.mesh}; typeof nodesInMesh: ${typeof nodesInMesh} (isArray=${Array.isArray(nodesInMesh)})`);
-                    //1.) get all nodes part of mesh
-                    //2.) for each node
-                    //  * check if there is a pending job for this schedule Id for this node
-                    //  * if not, schedule a new job for this node
+                    obj.dbg(`processing schedule (id=${scheduleId}) on mesh ${schedule.mesh} with ${nodesInMesh.length} node(s)`);
+                    
+                    for(const node of nodesInMesh) {
+                        obj.dbg(`do node: ${node}`);
 
-                    // //obj.debug('ScriptTask', 'Scheduling Job for', JSON.stringify(s));
-                    // obj.db.get(s.scriptId)
-                    //     .then((/** @type Array.<Script> */ scripts) => {
-                    //         // if a script is scheduled to run, but a previous run hasn't completed, 
-                    //         // don't schedule another job for the same (device probably offline).
-                    //         // results in the minimum jobs running once an agent comes back online.
-                    //         return obj.db.getIncompleteJobsForSchedule(s._id)
-                    //             .then((jobs) => {
-                    //                 if (jobs.length > 0) {
-                    //                     /* obj.debug('Plugin', 'ScriptTask', 'Skipping job creation'); */
-                    //                     return Promise.resolve();
-                    //                 } else {
-                    //                     /* obj.debug('Plugin', 'ScriptTask', 'Creating new job'); */
-                    //                     nextJobScheduled = true;
+                        const nodeId = node._id.toString();
 
-                    //                     return obj.db.addJob({
-                    //                         scriptId: s.scriptId,
-                    //                         scriptName: scripts[0].name,
-                    //                         node: s.node,
-                    //                         runBy: s.scheduledBy,
-                    //                         dontQueueUntil: nextJobTime,
-                    //                         jobSchedule: s._id,
-                    //                         state: jobState.SCHEDULED,
-                    //                     });
-                    //                 }
-                    //             });
-                    //     })
-                    //     .then(() => {
-                    //         if (nextJobScheduled) {
-                    //             /* obj.debug('Plugin', 'ScriptTask', 'Updating nextRun time'); */
-                    //             return obj.db.update(s._id, { nextRun: nextJobTime });
-                    //         } else {
-                    //             /* obj.debug('Plugin', 'ScriptTask', 'NOT updating nextRun time'); */
-                    //             return Promise.resolve();
-                    //         }
-                    //     })
-                    //     .then(() => {
-                    //         obj.updateFrontEnd({
-                    //             scriptId: s.scriptId,
-                    //             nodeId: s.node
-                    //         });
-                    //     })
-                    //     .catch((e) => { console.log('PLUGIN: ScriptTask: Error managing job schedules: ', e); });
+                        const incompleteJobs = await obj.db.getIncompleteJobsForSchedule(schedule._id, nodeId);
+
+                        if(incompleteJobs.length > 0) {
+                            obj.dbg(`incomplete job found for node ${nodeId}; skipping`);
+
+                            continue;
+                        }
+
+                        await obj.db.addJob({
+                            scriptId: schedule.scriptId,
+                            scriptName: script.name,
+                            node: nodeId,
+                            runBy: schedule.scheduledBy,
+                            dontQueueUntil: nextJobTime,
+                            jobSchedule: schedule._id,
+                            state: jobState.SCHEDULED,
+                        });
+
+                        obj.updateFrontEnd({
+                            scriptId: schedule.scriptId,
+                            nodeId: nodeId
+                        });
+                    }
                 }
+            } catch(e) {
+                await obj.db.update(schedule._id, { nextRun: nextJobTime });
             }
         }
     };

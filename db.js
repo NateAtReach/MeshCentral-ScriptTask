@@ -322,8 +322,19 @@ module.exports.CreateDB = function(meshserver) {
             return obj.scriptFile.find( { type: 'jobSchedule', node: nodeId } ).toArray();
         };
 
-        obj.getIncompleteJobsForSchedule = function (schedId) {
-            return obj.scriptFile.find( { type: 'job', jobSchedule: schedId, completeTime: null } ).toArray();
+        /**
+         * Returns incomplete jobs associated with a JobSchedule or MeshJobSchedule
+         * @param {string} schedId 
+         * @param {string|undefined} nodeId 
+         * @returns {Array.<Job>}
+         */
+        obj.getIncompleteJobsForSchedule = function (schedId, nodeId) {
+            return obj.scriptFile.find({
+                type: 'job',
+                jobSchedule: schedId,
+                completeTime: null,
+                ...(nodeId ? { node: nodeId } : undefined),
+            }).toArray();
         };
 
         obj.deletePendingJobsForSchedule = function (schedId) {
