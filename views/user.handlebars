@@ -418,8 +418,8 @@ function goAdvancedRun() {
     sWin.meshes = selectedMeshes;
 
     window.schedCallback = function(opts) {
-      const hasNodes = Array.isArray(opts.nodes);
-      const hasMeshes = Array.isArray(opts.meshes);
+      const hasNodes = Array.isArray(opts.nodes) && opts.nodes.length > 0;
+      const hasMeshes = Array.isArray(opts.meshes) && opts.meshes.length > 0;
 
       const rpcArgs = { 
           'action': 'plugin', 
